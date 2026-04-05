@@ -391,6 +391,32 @@ impl StdioBackend {
                     bridge_sessions: vec![],
                 });
             }
+            cmd if cmd.starts_with("/plugin") => {
+                // Handle /plugin list command
+                use crate::plugins::loader::load_plugins;
+                let plugins = load_plugins(&self.settings, &self.cwd);
+                let message = if plugins.is_empty() {
+                    "No plugins discovered.".to_string()
+                } else {
+                    let lines: Vec<_> = plugins
+                        .iter()
+                        .map(|p| {
+                            let status = if p.enabled { "✓" } else { "✗" };
+                            format!("  [{}] {} v{} - {}", status, p.name, p.version, p.description.as_deref().unwrap_or(""))
+                        })
+                        .collect();
+                    format!("Installed plugins:\n{}", lines.join("\n"))
+                };
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some(message),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
+                });
+            }
             cmd if cmd.starts_with("/permissions") => {
                 if cmd.contains("set") {
                     let mode = cmd.split_whitespace().nth(2).unwrap_or("default");
