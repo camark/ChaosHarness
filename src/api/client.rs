@@ -160,13 +160,26 @@ impl ApiClient {
             tools: request.tools.clone(),
         };
 
-        let response = self
+        // Support both Anthropic (x-api-key) and OpenAI-compatible (Bearer) auth
+        let use_bearer_auth = self.base_url.contains("moonshot")
+            || self.base_url.contains("openai")
+            || self.api_key.starts_with("sk-");
+
+        let mut req = self
             .client
             .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
             .header("Content-Type", "application/json")
-            .json(&body)
+            .json(&body);
+
+        if use_bearer_auth {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+        } else {
+            req = req
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01");
+        }
+
+        let response = req
             .send()
             .await
             .map_err(|e| ApiError::Network(e.to_string()))?;
