@@ -9,12 +9,14 @@ echo.
 echo   1. Start REPL (Interactive CLI)
 echo   2. Start Frontend (React TUI)
 echo   3. Start Backend Only (WebSocket)
+echo   4. Start Native TUI (ratatui, recommended for Windows)
 echo.
-set /p choice="Enter your choice (1-3): "
+set /p choice="Enter your choice (1-4): "
 
 if "%choice%"=="1" goto REPL
 if "%choice%"=="2" goto FRONTEND
 if "%choice%"=="3" goto BACKEND
+if "%choice%"=="4" goto TUI
 echo Invalid choice. Exiting.
 exit /b 1
 
@@ -43,4 +45,11 @@ exit /b
 echo.
 echo Starting Backend Only mode (WebSocket on port 3000)...
 cargo run -- --backend-only
+exit /b
+
+:TUI
+echo.
+echo Starting Native TUI mode (ratatui)...
+echo This provides the best Windows compatibility.
+cargo run -- --tui
 exit /b

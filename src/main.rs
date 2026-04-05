@@ -18,6 +18,7 @@ mod skills;
 mod state;
 mod tools;
 mod ui;
+mod tui_frontend;
 
 pub use ui::repl;
 
@@ -123,6 +124,10 @@ pub struct Args {
     /// Run stdio backend for React terminal UI (OHJSON protocol)
     #[arg(long, hide = true)]
     stdio_backend: bool,
+
+    /// Use native TUI frontend (ratatui, better Windows support)
+    #[arg(long)]
+    tui: bool,
 }
 
 #[tokio::main]
@@ -160,6 +165,12 @@ async fn main() -> Result<()> {
                 Ok(()) // Clean shutdown
             }
         };
+    }
+
+    // Handle --tui mode (native ratatui TUI frontend)
+    if args.tui {
+        return tui_frontend::run_tui_frontend()
+            .map_err(|e| anyhow::anyhow!("TUI frontend error: {}", e));
     }
 
     // Handle --continue and --resume flags
