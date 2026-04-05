@@ -172,7 +172,7 @@ impl ServerState {
     }
 
     pub async fn update_transcript(&self, item: TranscriptItem) {
-        let mut active = self.active_session.lock().await;
+        let active = self.active_session.lock().await;
         if let Some(session_id) = active.as_ref() {
             let mut sessions = self.sessions.lock().await;
             if let Some(session) = sessions.get_mut(session_id) {
@@ -186,7 +186,7 @@ impl ServerState {
     }
 
     pub async fn set_busy(&self, busy: bool) {
-        let mut active = self.active_session.lock().await;
+        let active = self.active_session.lock().await;
         if let Some(session_id) = active.as_ref() {
             let mut sessions = self.sessions.lock().await;
             if let Some(session) = sessions.get_mut(session_id) {

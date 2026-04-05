@@ -426,7 +426,6 @@ fn cmd_sessions(_args: &str, ctx: &CommandContext) -> CommandResult {
 
 fn cmd_export_session(_args: &str, ctx: &CommandContext) -> CommandResult {
     use crate::services::session_storage::{export_session_markdown, load_session_snapshot};
-    use crate::engine::query::QueryEngine;
 
     // Try to load current session
     match load_session_snapshot(&ctx.cwd) {

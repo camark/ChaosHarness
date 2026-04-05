@@ -13,7 +13,7 @@ use ratatui::{
 use std::{
     io::{self, Write, BufRead, BufReader},
     time::Duration,
-    process::{Command, Stdio, Child, ChildStdin, ChildStdout},
+    process::{Command, Stdio, Child},
     sync::mpsc::{self, TryRecvError},
     thread,
 };
@@ -48,8 +48,8 @@ impl Backend {
 
         let handle = thread::spawn(move || {
             // Take ownership of the values
-            let mut stdout = stdout_opt.take().unwrap();
-            let mut stdin = stdin_opt.take().unwrap();
+            let stdout = stdout_opt.take().unwrap();
+            let stdin = stdin_opt.take().unwrap();
 
             // Create two new channels for internal communication
             let (stdout_tx, stdout_rx) = mpsc::channel();

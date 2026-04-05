@@ -6,9 +6,9 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{Agent, AgentConfig, AgentRole, AgentState};
+use super::agent::{AgentConfig, AgentRole};
 use super::coordinator::{Coordinator, TaskResult};
-use super::messages::{AgentMessage, MessageType};
+use super::messages::AgentMessage;
 use crate::config::Settings;
 
 /// Swarm configuration

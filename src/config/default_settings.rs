@@ -1,7 +1,7 @@
 //! Default settings generator
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Generate a default settings.json file
 pub fn generate_default_settings(path: &Path) -> Result<(), String> {
@@ -70,7 +70,6 @@ pub fn generate_default_settings(path: &Path) -> Result<(), String> {
 pub fn initialize_defaults() -> Result<String, String> {
     use crate::config::paths::{
         get_config_dir, get_config_file_path, get_data_dir, get_logs_dir,
-        get_project_config_dir,
     };
 
     let mut created = Vec::new();
@@ -148,6 +147,7 @@ pub fn initialize_project(cwd: &str) -> Result<String, String> {
 mod tests {
     use super::*;
     use std::env;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]

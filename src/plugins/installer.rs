@@ -1,7 +1,6 @@
 //! Plugin installer
 
 use std::path::Path;
-use std::fs;
 
 pub fn install_plugin_from_path(source: &str) -> Result<String, String> {
     let source_path = Path::new(source);

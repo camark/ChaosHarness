@@ -154,7 +154,7 @@ impl ConversationMessage {
                         }
                     }));
                 }
-                MessageContent::ToolResult { tool_use_id, content, is_error } => {
+                MessageContent::ToolResult { tool_use_id: _, content, is_error: _ } => {
                     // OpenAI format: tool_result goes in content as text
                     content_array.push(json!({
                         "type": "text",
@@ -197,7 +197,7 @@ impl ConversationMessage {
             let is_tool_result = self.content.iter().any(|c| matches!(c, MessageContent::ToolResult { .. }));
             if is_tool_result && self.content.len() == 1 {
                 // Single tool result - use OpenAI tool format
-                if let MessageContent::ToolResult { tool_use_id, content, is_error } = &self.content[0] {
+                if let MessageContent::ToolResult { tool_use_id, content, is_error: _ } = &self.content[0] {
                     param["role"] = json!("tool");
                     param["tool_call_id"] = json!(tool_use_id);
                     param["content"] = json!(content);

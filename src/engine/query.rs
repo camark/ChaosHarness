@@ -8,11 +8,9 @@ use crate::engine::messages::{
 };
 use crate::hooks::executor::HookExecutor;
 use crate::hooks::registry::HookRegistry;
-use crate::hooks::types::HookContext;
 use crate::permissions::checker::PermissionChecker;
 use crate::tools::base::{ToolExecutionContext, ToolRegistry};
 use anyhow::Result;
-use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;

@@ -2,7 +2,6 @@
 
 use crate::hooks::schemas::HookDefinition;
 use crate::hooks::types::HookContext;
-use serde_json::Value;
 use std::collections::HashSet;
 use lazy_static::lazy_static;
 

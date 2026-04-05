@@ -1,7 +1,6 @@
 //! Inter-agent communication messages
 
 use serde::{Deserialize, Serialize};
-use crate::engine::messages::ConversationMessage;
 
 /// Message types for agent communication
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

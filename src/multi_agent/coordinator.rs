@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
 use serde::{Deserialize, Serialize};
 
-use super::agent::{Agent, AgentConfig, AgentRole, AgentState};
+use super::agent::{Agent, AgentConfig, AgentRole};
 use super::messages::{AgentMessage, Task, MessageType};
 use crate::config::Settings;
 

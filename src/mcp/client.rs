@@ -9,9 +9,8 @@ use anyhow::{Result, anyhow, bail};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::Mutex;
 
 /// MCP Client state
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,7 +77,7 @@ impl McpClient {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let mut process = cmd.spawn()
+        let process = cmd.spawn()
             .map_err(|e| anyhow!("Failed to spawn process '{}': {}", command, e))?;
 
         self.process = Some(process);
@@ -218,7 +217,7 @@ impl McpClient {
     }
 
     /// Send a JSON-RPC request
-    async fn send_request(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    async fn send_request(&self, method: &str, _params: Option<serde_json::Value>) -> Result<serde_json::Value> {
         // In a full implementation, this would:
         // 1. Generate request ID
         // 2. Send JSON-RPC request to server
@@ -231,7 +230,7 @@ impl McpClient {
     }
 
     /// Send a notification
-    async fn send_notification(&self, method: &str, params: Option<serde_json::Value>) -> Result<()> {
+    async fn send_notification(&self, method: &str, _params: Option<serde_json::Value>) -> Result<()> {
         // Notifications don't expect a response
         warn!("send_notification not fully implemented: {}", method);
         Ok(())
