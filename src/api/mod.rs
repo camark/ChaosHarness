@@ -4,5 +4,7 @@ pub mod client;
 pub mod errors;
 pub mod usage;
 
+#[allow(unused_imports)]
 pub use client::{ApiClient, ApiRequest, ApiMessage, ApiUsage};
+#[allow(unused_imports)]
 pub use errors::ApiError;

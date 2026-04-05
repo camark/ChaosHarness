@@ -1,5 +1,5 @@
 //! Ratatui TUI frontend for Rust Harness
-//! Simple synchronous version for better reliability on Windows
+//! Improved UI design with reliable backend communication
 
 use crossterm::{
     event::{self, KeyCode, KeyEventKind, KeyModifiers},
@@ -53,7 +53,7 @@ impl Backend {
             stdout = c.stdout.take();
         }
 
-        // Spawn reader thread
+        // Spawn reader thread - simple and reliable
         let handle = thread::spawn(move || {
             if let Some(mut stdout) = stdout {
                 let mut reader = BufReader::new(stdout);
@@ -107,6 +107,8 @@ struct App {
     cursor_visible: bool,
     cursor_timer: u32,
     backend: Backend,
+    history: Vec<String>,
+    history_index: isize,
 }
 
 impl App {
@@ -121,6 +123,8 @@ impl App {
             cursor_visible: true,
             cursor_timer: 0,
             backend,
+            history: Vec::new(),
+            history_index: -1,
         }
     }
 
@@ -194,6 +198,26 @@ impl App {
             KeyCode::Esc => {
                 self.input.clear();
             }
+            KeyCode::Up => {
+                if !self.history.is_empty() {
+                    let next_index = (self.history_index + 1).min(self.history.len() as isize - 1);
+                    if next_index >= 0 {
+                        self.history_index = next_index;
+                        self.input = self.history[self.history.len() - 1 - next_index as usize].clone();
+                    }
+                }
+            }
+            KeyCode::Down => {
+                let next_index = self.history_index - 1;
+                if next_index >= -1 {
+                    self.history_index = next_index;
+                    self.input = if next_index == -1 {
+                        String::new()
+                    } else {
+                        self.history[self.history.len() - 1 - next_index as usize].clone()
+                    };
+                }
+            }
             KeyCode::Char(c) => {
                 if !self.busy {
                     self.input.push(c);
@@ -206,10 +230,9 @@ impl App {
     fn submit_input(&mut self) {
         let line = self.input.clone();
         self.input.clear();
+        self.history.push(line.clone());
+        self.history_index = -1;
         self.busy = true;
-
-        // Add user message to transcript
-        self.transcript.push(format!("> {}", line));
 
         // Send to backend
         let msg = format!(r#"{{"type":"submit_line","line":"{}"}}"#,
@@ -222,7 +245,7 @@ impl App {
             if let Some(event_type) = event.get("type").and_then(|v| v.as_str()) {
                 match event_type {
                     "ready" => {
-                        self.transcript.push("[System] Backend connected".to_string());
+                        self.transcript.push("[System] Welcome to Rust Harness! Type your message below.".to_string());
                         self.busy = false;
                     }
                     "transcript_item" => {
@@ -254,6 +277,12 @@ impl App {
                         self.transcript.push(format!("[Error] {}", message));
                         self.busy = false;
                     }
+                    "clear_transcript" => {
+                        self.transcript.clear();
+                    }
+                    "shutdown" => {
+                        self.should_quit = true;
+                    }
                     _ => {}
                 }
             }
@@ -266,24 +295,54 @@ impl App {
         // Clear screen
         f.render_widget(Clear, area);
 
-        // Create layout
-        let chunks = Layout::default()
+        // Create main layout with better spacing
+        let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
-                Constraint::Min(1),
-                Constraint::Length(3),
+                Constraint::Length(3),    // Title bar
+                Constraint::Min(1),       // Conversation area (flexible)
+                Constraint::Length(1),    // Status separator
+                Constraint::Length(3),    // Input area
             ])
             .split(area);
 
-        // Title
-        let title = Paragraph::new("Rust Harness TUI - Ctrl+C to exit")
+        // Title bar
+        self.render_title(f, main_chunks[0]);
+
+        // Conversation area
+        self.render_conversation(f, main_chunks[1]);
+
+        // Status separator and input
+        self.render_status(f, main_chunks[2]);
+        self.render_input(f, main_chunks[3]);
+    }
+
+    fn render_title(&self, f: &mut Frame, area: Rect) {
+        let title_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan));
+
+        let inner = title_block.inner(area);
+        f.render_widget(title_block, area);
+
+        let title = Paragraph::new(" Rust Harness ")
             .style(Style::default().fg(Color::Cyan).bold())
             .alignment(Alignment::Center);
-        f.render_widget(title, chunks[0]);
 
-        // Transcript area
-        let transcript_lines: Vec<ListItem> = self.transcript
+        f.render_widget(title, inner);
+    }
+
+    fn render_conversation(&self, f: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .title(" Chat ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray));
+
+        let inner_area = block.inner(area);
+        f.render_widget(block, area);
+
+        // Create transcript items
+        let items: Vec<ListItem> = self.transcript
             .iter()
             .map(|line| {
                 let style = if line.starts_with("> ") {
@@ -303,36 +362,52 @@ impl App {
             })
             .collect();
 
-        let list = List::new(transcript_lines)
-            .block(Block::default()
-                .title(" Transcript ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::White)));
-        f.render_widget(list, chunks[1]);
+        let list = List::new(items);
+        f.render_widget(list, inner_area);
+    }
 
-        // Input area
-        let input_area = chunks[2];
-        let input_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(2)])
-            .split(input_area);
-
-        // Status line
-        let status = if self.busy {
-            Paragraph::new("Processing...")
-                .style(Style::default().fg(Color::Yellow))
+    fn render_status(&self, f: &mut Frame, area: Rect) {
+        let status_text = if self.busy {
+            " ⏳ Processing... "
         } else {
-            Paragraph::new("Ready - Enter to send, Esc to clear")
-                .style(Style::default().fg(Color::DarkGray))
+            " ✅ Ready "
         };
-        f.render_widget(status, input_chunks[0]);
 
-        // Input line with cursor
+        let style = if self.busy {
+            Style::default().fg(Color::Yellow).bg(Color::DarkGray)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        let status = Paragraph::new(status_text).style(style);
+        f.render_widget(status, area);
+    }
+
+    fn render_input(&self, f: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray));
+
+        let inner_area = block.inner(area);
+        f.render_widget(block, area);
+
+        // Cursor
         let cursor = if self.cursor_visible && !self.busy { "█" } else { " " };
-        let input_text = format!("> {}{}", self.input, cursor);
-        let input = Paragraph::new(input_text)
-            .style(Style::default().fg(Color::White));
-        f.render_widget(input, input_chunks[1]);
+
+        let input_text = if self.busy {
+            format!("(busy) {}", cursor)
+        } else {
+            format!(">{}{}", self.input, cursor)
+        };
+
+        let style = if self.busy {
+            Style::default().fg(Color::DarkGray)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        let input = Paragraph::new(input_text).style(style);
+        f.render_widget(input, inner_area);
     }
 }
 

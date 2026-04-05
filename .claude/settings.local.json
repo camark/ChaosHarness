@@ -47,7 +47,8 @@
       "Bash(start-tui.bat:*)",
       "Read(//tmp/**)",
       "Bash(ps -W)",
-      "Bash(Stop-Process -Name rust_harness -Force)"
+      "Bash(Stop-Process -Name rust_harness -Force)",
+      "Bash(dir \"C:\\\\opt\\\\OpenHarness\")"
     ]
   }
 }

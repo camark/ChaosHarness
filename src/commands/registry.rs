@@ -3,7 +3,6 @@
 use crate::commands::types::{CommandContext, CommandResult, SlashCommand};
 use crate::memory::MemoryManager;
 use std::collections::HashMap;
-use std::path::Path;
 
 /// Registry for slash commands
 pub struct CommandRegistry {
