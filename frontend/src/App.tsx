@@ -269,6 +269,11 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				setInput('');
 				return;
 			}
+			// Handle backspace to delete input
+			if (key.backspace) {
+				setInput(prev => prev.slice(0, -1));
+				return;
+			}
 			// Still allow typing to complete command
 			if (input && !key.ctrl && !key.meta) {
 				setInput(prev => prev + input);

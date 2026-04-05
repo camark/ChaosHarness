@@ -35,7 +35,10 @@
       "Bash(ls -la /c/git/RustHarness/frontend/test*)",
       "Bash(ls -la /c/git/RustHarness/test*)",
       "Bash(timeout 15 env OPENHARNESS_FRONTEND_SCRIPT='[\"test\"]' OPENHARNESS_FRONTEND_RAW_RETURN=1 npx tsx src/index.tsx)",
-      "Bash(start.bat:*)"
+      "Bash(start.bat:*)",
+      "Bash(./start.bat:*)",
+      "Bash(tasklist)",
+      "Bash(timeout 5 sleep 5)"
     ]
   }
 }
