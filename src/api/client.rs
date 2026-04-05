@@ -149,9 +149,14 @@ impl ApiClient {
             || self.base_url.contains("openai")
             || self.api_key.starts_with("sk-");
 
+        // Build URL - check if base_url already contains /v1 to avoid duplication
         let url = if use_openai_format {
             // OpenAI-compatible APIs use /v1/chat/completions
-            format!("{}/v1/chat/completions", self.base_url)
+            if self.base_url.ends_with("/v1") || self.base_url.ends_with("/v1/") {
+                format!("{}/chat/completions", self.base_url)
+            } else {
+                format!("{}/v1/chat/completions", self.base_url)
+            }
         } else {
             // Anthropic uses /v1/messages
             format!("{}/v1/messages", self.base_url)
