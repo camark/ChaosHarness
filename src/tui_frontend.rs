@@ -1,5 +1,5 @@
 //! Ratatui TUI frontend for Rust Harness
-//! Improved UI design with reliable backend communication
+//! Simple synchronous version for better reliability on Windows
 
 use crossterm::{
     event::{self, KeyCode, KeyEventKind, KeyModifiers},
@@ -23,39 +23,40 @@ struct Backend {
     tx: mpsc::Sender<String>,
     rx: mpsc::Receiver<String>,
     _thread: thread::JoinHandle<()>,
-    _child: Option<Child>, // Keep child process alive
+    _child: Child, // Keep child process alive
 }
 
 impl Backend {
-    fn new() -> Self {
+    fn new() -> io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let (out_tx, out_rx) = mpsc::channel();
 
-        let mut child: Option<Child> = None;
-
         // Start backend process
-        match Command::new("cargo")
+        let mut child = Command::new("cargo")
             .args(["run", "--", "--stdio-backend"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(c) => child = Some(c),
-            Err(e) => eprintln!("Failed to start backend: {}", e),
-        }
+            .stderr(Stdio::inherit())
+            .spawn()?;
 
-        let mut stdin: Option<ChildStdin> = None;
-        let mut stdout: Option<ChildStdout> = None;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
 
-        if let Some(ref mut c) = child {
-            stdin = c.stdin.take();
-            stdout = c.stdout.take();
-        }
+        // Wrap in Option to make moving easier
+        let mut stdin_opt = Some(stdin);
+        let mut stdout_opt = Some(stdout);
 
-        // Spawn reader thread - simple and reliable
         let handle = thread::spawn(move || {
-            if let Some(mut stdout) = stdout {
+            // Take ownership of the values
+            let mut stdout = stdout_opt.take().unwrap();
+            let mut stdin = stdin_opt.take().unwrap();
+
+            // Create two new channels for internal communication
+            let (stdout_tx, stdout_rx) = mpsc::channel();
+            let (stdin_tx, stdin_rx) = mpsc::channel();
+
+            // Thread 1: Read stdout
+            thread::spawn(move || {
                 let mut reader = BufReader::new(stdout);
                 let mut line = String::new();
                 loop {
@@ -65,28 +66,44 @@ impl Backend {
                         Ok(_) => {
                             let trimmed = line.trim();
                             if let Some(json_str) = trimmed.strip_prefix("OHJSON:") {
-                                let _ = out_tx.send(json_str.to_string());
+                                let _ = stdout_tx.send(json_str.to_string());
                             }
                         }
                         Err(_) => break,
                     }
                 }
-            }
-            // Wait for messages and write to stdin
-            for msg in rx {
-                if let Some(ref mut stdin) = stdin {
-                    let _ = writeln!(stdin, "{}", msg);
-                    let _ = stdin.flush();
+            });
+
+            // Thread 2: Write stdin
+            thread::spawn(move || {
+                let mut writer = stdin;
+                for msg in stdin_rx {
+                    let _ = writeln!(writer, "{}", msg);
+                    let _ = writer.flush();
                 }
+            });
+
+            // Forward messages from our rx to stdin_tx
+            let forward_handle = thread::spawn(move || {
+                for msg in rx {
+                    let _ = stdin_tx.send(msg);
+                }
+            });
+
+            // Forward messages from stdout_rx to out_tx
+            for msg in stdout_rx {
+                let _ = out_tx.send(msg);
             }
+
+            let _ = forward_handle.join();
         });
 
-        Self {
+        Ok(Self {
             tx,
             rx: out_rx,
             _thread: handle,
             _child: child,
-        }
+        })
     }
 
     fn send(&self, msg: &str) {
@@ -107,15 +124,13 @@ struct App {
     cursor_visible: bool,
     cursor_timer: u32,
     backend: Backend,
-    history: Vec<String>,
-    history_index: isize,
 }
 
 impl App {
-    fn new() -> Self {
-        let backend = Backend::new();
+    fn new() -> io::Result<Self> {
+        let backend = Backend::new()?;
 
-        Self {
+        Ok(Self {
             input: String::new(),
             transcript: Vec::new(),
             busy: false,
@@ -123,9 +138,7 @@ impl App {
             cursor_visible: true,
             cursor_timer: 0,
             backend,
-            history: Vec::new(),
-            history_index: -1,
-        }
+        })
     }
 
     fn run(&mut self) -> io::Result<()> {
@@ -198,26 +211,6 @@ impl App {
             KeyCode::Esc => {
                 self.input.clear();
             }
-            KeyCode::Up => {
-                if !self.history.is_empty() {
-                    let next_index = (self.history_index + 1).min(self.history.len() as isize - 1);
-                    if next_index >= 0 {
-                        self.history_index = next_index;
-                        self.input = self.history[self.history.len() - 1 - next_index as usize].clone();
-                    }
-                }
-            }
-            KeyCode::Down => {
-                let next_index = self.history_index - 1;
-                if next_index >= -1 {
-                    self.history_index = next_index;
-                    self.input = if next_index == -1 {
-                        String::new()
-                    } else {
-                        self.history[self.history.len() - 1 - next_index as usize].clone()
-                    };
-                }
-            }
             KeyCode::Char(c) => {
                 if !self.busy {
                     self.input.push(c);
@@ -230,10 +223,9 @@ impl App {
     fn submit_input(&mut self) {
         let line = self.input.clone();
         self.input.clear();
-        self.history.push(line.clone());
-        self.history_index = -1;
         self.busy = true;
 
+        // Don't add user message here - backend will echo it via transcript_item
         // Send to backend
         let msg = format!(r#"{{"type":"submit_line","line":"{}"}}"#,
             line.replace('\\', "\\\\").replace('"', "\\\""));
@@ -245,7 +237,7 @@ impl App {
             if let Some(event_type) = event.get("type").and_then(|v| v.as_str()) {
                 match event_type {
                     "ready" => {
-                        self.transcript.push("[System] Welcome to Rust Harness! Type your message below.".to_string());
+                        self.transcript.push("[System] Backend connected".to_string());
                         self.busy = false;
                     }
                     "transcript_item" => {
@@ -277,12 +269,6 @@ impl App {
                         self.transcript.push(format!("[Error] {}", message));
                         self.busy = false;
                     }
-                    "clear_transcript" => {
-                        self.transcript.clear();
-                    }
-                    "shutdown" => {
-                        self.should_quit = true;
-                    }
                     _ => {}
                 }
             }
@@ -295,54 +281,24 @@ impl App {
         // Clear screen
         f.render_widget(Clear, area);
 
-        // Create main layout with better spacing
-        let main_chunks = Layout::default()
+        // Create layout
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),    // Title bar
-                Constraint::Min(1),       // Conversation area (flexible)
-                Constraint::Length(1),    // Status separator
-                Constraint::Length(3),    // Input area
+                Constraint::Length(3),
+                Constraint::Min(1),
+                Constraint::Length(3),
             ])
             .split(area);
 
-        // Title bar
-        self.render_title(f, main_chunks[0]);
-
-        // Conversation area
-        self.render_conversation(f, main_chunks[1]);
-
-        // Status separator and input
-        self.render_status(f, main_chunks[2]);
-        self.render_input(f, main_chunks[3]);
-    }
-
-    fn render_title(&self, f: &mut Frame, area: Rect) {
-        let title_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
-
-        let inner = title_block.inner(area);
-        f.render_widget(title_block, area);
-
-        let title = Paragraph::new(" Rust Harness ")
+        // Title
+        let title = Paragraph::new("Rust Harness TUI - Ctrl+C to exit")
             .style(Style::default().fg(Color::Cyan).bold())
             .alignment(Alignment::Center);
+        f.render_widget(title, chunks[0]);
 
-        f.render_widget(title, inner);
-    }
-
-    fn render_conversation(&self, f: &mut Frame, area: Rect) {
-        let block = Block::default()
-            .title(" Chat ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
-
-        let inner_area = block.inner(area);
-        f.render_widget(block, area);
-
-        // Create transcript items
-        let items: Vec<ListItem> = self.transcript
+        // Transcript area
+        let transcript_lines: Vec<ListItem> = self.transcript
             .iter()
             .map(|line| {
                 let style = if line.starts_with("> ") {
@@ -362,57 +318,46 @@ impl App {
             })
             .collect();
 
-        let list = List::new(items);
-        f.render_widget(list, inner_area);
-    }
+        let list = List::new(transcript_lines)
+            .block(Block::default()
+                .title(" Transcript ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::White)));
+        f.render_widget(list, chunks[1]);
 
-    fn render_status(&self, f: &mut Frame, area: Rect) {
-        let status_text = if self.busy {
-            " ⏳ Processing... "
+        // Input area
+        let input_area = chunks[2];
+        let input_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(2)])
+            .split(input_area);
+
+        // Status line
+        let status = if self.busy {
+            Paragraph::new("Processing...")
+                .style(Style::default().fg(Color::Yellow))
         } else {
-            " ✅ Ready "
+            Paragraph::new("Ready - Enter to send, Esc to clear")
+                .style(Style::default().fg(Color::DarkGray))
         };
+        f.render_widget(status, input_chunks[0]);
 
-        let style = if self.busy {
-            Style::default().fg(Color::Yellow).bg(Color::DarkGray)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
-
-        let status = Paragraph::new(status_text).style(style);
-        f.render_widget(status, area);
-    }
-
-    fn render_input(&self, f: &mut Frame, area: Rect) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
-
-        let inner_area = block.inner(area);
-        f.render_widget(block, area);
-
-        // Cursor
+        // Input line with cursor
         let cursor = if self.cursor_visible && !self.busy { "█" } else { " " };
-
-        let input_text = if self.busy {
-            format!("(busy) {}", cursor)
-        } else {
-            format!(">{}{}", self.input, cursor)
-        };
-
-        let style = if self.busy {
-            Style::default().fg(Color::DarkGray)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        let input = Paragraph::new(input_text).style(style);
-        f.render_widget(input, inner_area);
+        let input_text = format!("> {}{}", self.input, cursor);
+        let input = Paragraph::new(input_text)
+            .style(Style::default().fg(Color::White));
+        f.render_widget(input, input_chunks[1]);
     }
 }
 
 /// Run the TUI frontend
 pub fn run_tui_frontend() -> io::Result<()> {
-    let mut app = App::new();
-    app.run()
+    match App::new() {
+        Ok(mut app) => app.run(),
+        Err(e) => {
+            eprintln!("Failed to start TUI: {}", e);
+            Err(e)
+        }
+    }
 }
