@@ -1,0 +1,81 @@
+[package]
+name = "rust_harness"
+version = "0.1.0"
+edition = "2021"
+description = "An AI-powered coding assistant harness"
+authors = ["camark"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Synchronization primitives
+parking_lot = "0.12"
+
+# CLI parsing
+clap = { version = "4.4", features = ["derive", "env"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# URL parsing
+url = "2.5"
+urlencoding = "2.1"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Config and environment
+dirs = "5.0"
+dotenvy = "0.15"
+
+# Async utilities
+futures = "0.3"
+async-stream = "0.3"
+
+# UUID for session IDs
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# chrono for date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Regex for pattern matching
+regex = "1.10"
+glob = "0.3"
+
+# Line editing for REPL
+rustyline = { version = "13.0", features = ["derive"] }
+
+# MCP support (optional)
+serde_path_to_error = "0.1"
+
+# Base64 encoding
+base64 = "0.21"
+
+# sha2 for hashing
+sha2 = "0.10"
+
+# Random for jitter
+rand = "0.8"
+
+# HTTP client (reqwest is blocking, need non-blocking too)
+bytes = "1.5"
+
+# Web server for backend-only mode
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.5", features = ["cors"] }
+tokio-tungstenite = "0.21"
+
+[dev-dependencies]
+tempfile = "3.9"
+mockito = "1.2"
