@@ -144,7 +144,18 @@ impl ApiClient {
     }
 
     async fn send_request(&self, request: &ApiRequest) -> Result<Response, ApiError> {
-        let url = format!("{}/v1/messages", self.base_url);
+        // Detect API type and build appropriate URL
+        let use_openai_format = self.base_url.contains("moonshot")
+            || self.base_url.contains("openai")
+            || self.api_key.starts_with("sk-");
+
+        let url = if use_openai_format {
+            // OpenAI-compatible APIs use /v1/chat/completions
+            format!("{}/v1/chat/completions", self.base_url)
+        } else {
+            // Anthropic uses /v1/messages
+            format!("{}/v1/messages", self.base_url)
+        };
 
         let messages: Vec<Value> = request
             .messages
@@ -160,18 +171,13 @@ impl ApiClient {
             tools: request.tools.clone(),
         };
 
-        // Support both Anthropic (x-api-key) and OpenAI-compatible (Bearer) auth
-        let use_bearer_auth = self.base_url.contains("moonshot")
-            || self.base_url.contains("openai")
-            || self.api_key.starts_with("sk-");
-
         let mut req = self
             .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&body);
 
-        if use_bearer_auth {
+        if use_openai_format {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         } else {
             req = req
