@@ -32,9 +32,15 @@ impl Backend {
         let (tx, rx) = mpsc::channel();
         let (out_tx, out_rx) = mpsc::channel();
 
-        // Start backend process
-        let mut child = Command::new("cargo")
-            .args(["run", "--", "--stdio-backend"])
+        // Use debug build directly
+        let bin_path = if cfg!(windows) {
+            "target/debug/rust_harness.exe"
+        } else {
+            "target/debug/rust_harness"
+        };
+
+        let mut child = Command::new(bin_path)
+            .arg("--stdio-backend")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
