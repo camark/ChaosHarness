@@ -12,7 +12,9 @@ use crate::tools::web_search::WebSearchTool;
 use crate::tools::notebook_edit::NotebookEditTool;
 use crate::tools::ask_user::AskUserTool;
 use crate::tools::directory_tree::DirectoryTreeTool;
+use crate::tools::skill::SkillTool;
 use std::env;
+use std::env::current_dir;
 
 /// Initialize all available tools
 pub async fn init_tools() -> ToolRegistry {
@@ -30,6 +32,7 @@ pub async fn init_tools() -> ToolRegistry {
     registry.register(NotebookEditTool).await;
     registry.register(AskUserTool::new(None)).await;
     registry.register(DirectoryTreeTool::new(env::current_dir().unwrap_or_default())).await;
+    registry.register(SkillTool::new(current_dir().unwrap_or_default())).await;
 
     registry
 }

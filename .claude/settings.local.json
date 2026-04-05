@@ -48,7 +48,26 @@
       "Read(//tmp/**)",
       "Bash(ps -W)",
       "Bash(Stop-Process -Name rust_harness -Force)",
-      "Bash(dir \"C:\\\\opt\\\\OpenHarness\")"
+      "Bash(dir \"C:\\\\opt\\\\OpenHarness\")",
+      "Bash(git fsck:*)",
+      "Read(//c/git/RustHarness/frontend/**)",
+      "Bash(node:*)",
+      "Bash(where wt:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(START:*)",
+      "Bash(./run.bat:*)",
+      "Bash(findstr -i \"node tsx\")",
+      "Bash(wmic process:*)",
+      "Bash(findstr -i \"tsx frontend\")",
+      "WebFetch(domain:github.com)",
+      "Bash(dir:*)",
+      "Bash(findstr -i \"tsx\")",
+      "Bash(findstr -i \"node\")",
+      "Bash(tasklist /v)",
+      "Bash(tasklist -v)",
+      "Bash(timeout 5 cat -)",
+      "Bash(python3 -c \"import json; json.loads\\('{\\\\\"type\\\\\":\\\\\"submit_line\\\\\",\\\\\"line\\\\\":\\\\\"test\\\\\"}'\\)\")",
+      "Bash(RUST_LOG=info timeout 5 ./target/release/rust_harness.exe --tui)"
     ]
   }
 }

@@ -13,7 +13,7 @@ use ratatui::{
 use std::{
     io::{self, Write, BufRead, BufReader},
     time::Duration,
-    process::{Command, Stdio, Child},
+    process::{Command, Stdio, Child, ChildStdin, ChildStdout},
     sync::mpsc::{self, TryRecvError},
     thread,
 };
@@ -23,41 +23,38 @@ struct Backend {
     tx: mpsc::Sender<String>,
     rx: mpsc::Receiver<String>,
     _thread: thread::JoinHandle<()>,
-    _child: Child, // Keep child process alive
 }
 
 impl Backend {
-    fn new() -> io::Result<Self> {
+    fn new() -> Self {
         let (tx, rx) = mpsc::channel();
         let (out_tx, out_rx) = mpsc::channel();
 
-        // Start backend process - use absolute path based on current executable
-        let bin_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|parent| parent.join("rust_harness.exe")))
-            .unwrap_or_else(|| {
-                // Fallback to relative path
-                if cfg!(windows) {
-                    std::path::PathBuf::from("target/debug/rust_harness.exe")
-                } else {
-                    std::path::PathBuf::from("target/debug/rust_harness")
-                }
-            });
+        let mut child: Option<Child> = None;
 
-        let mut child = Command::new(&bin_path)
-            .arg("--stdio-backend")
+        // Start backend process
+        match Command::new("cargo")
+            .args(["run", "--", "--stdio-backend"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .spawn()?;
+            .spawn()
+        {
+            Ok(c) => child = Some(c),
+            Err(e) => eprintln!("Failed to start backend: {}", e),
+        }
 
-        let mut stdin = child.stdin.take().unwrap();
-        let stdout = child.stdout.take().unwrap();
+        let mut stdin: Option<ChildStdin> = None;
+        let mut stdout: Option<ChildStdout> = None;
+
+        if let Some(ref mut c) = child {
+            stdin = c.stdin.take();
+            stdout = c.stdout.take();
+        }
 
         // Spawn reader thread
         let handle = thread::spawn(move || {
-            // Thread 1: Read stdout
-            let stdout_thread = thread::spawn(move || {
+            if let Some(mut stdout) = stdout {
                 let mut reader = BufReader::new(stdout);
                 let mut line = String::new();
                 loop {
@@ -73,26 +70,21 @@ impl Backend {
                         Err(_) => break,
                     }
                 }
-            });
-
-            // Thread 2: Write stdin
-            let stdin_thread = thread::spawn(move || {
-                for msg in rx {
+            }
+            // Wait for messages and write to stdin
+            for msg in rx {
+                if let Some(ref mut stdin) = stdin {
                     let _ = writeln!(stdin, "{}", msg);
                     let _ = stdin.flush();
                 }
-            });
-
-            let _ = stdout_thread.join();
-            let _ = stdin_thread.join();
+            }
         });
 
-        Ok(Self {
+        Self {
             tx,
             rx: out_rx,
             _thread: handle,
-            _child: child,
-        })
+        }
     }
 
     fn send(&self, msg: &str) {
@@ -116,10 +108,10 @@ struct App {
 }
 
 impl App {
-    fn new() -> io::Result<Self> {
-        let backend = Backend::new()?;
+    fn new() -> Self {
+        let backend = Backend::new();
 
-        Ok(Self {
+        Self {
             input: String::new(),
             transcript: Vec::new(),
             busy: false,
@@ -127,7 +119,7 @@ impl App {
             cursor_visible: true,
             cursor_timer: 0,
             backend,
-        })
+        }
     }
 
     fn run(&mut self) -> io::Result<()> {
@@ -148,11 +140,7 @@ impl App {
                 match self.backend.recv() {
                     Ok(msg) => self.process_backend_message(&msg),
                     Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        self.transcript.push("[Error] Backend process exited unexpectedly".to_string());
-                        self.should_quit = true;
-                        break;
-                    }
+                    Err(TryRecvError::Disconnected) => break,
                 }
             }
 
@@ -218,7 +206,9 @@ impl App {
         self.input.clear();
         self.busy = true;
 
-        // Don't add user message here - backend will echo it via transcript_item
+        // Add user message to transcript
+        self.transcript.push(format!("> {}", line));
+
         // Send to backend
         let msg = format!(r#"{{"type":"submit_line","line":"{}"}}"#,
             line.replace('\\', "\\\\").replace('"', "\\\""));
@@ -346,11 +336,6 @@ impl App {
 
 /// Run the TUI frontend
 pub fn run_tui_frontend() -> io::Result<()> {
-    match App::new() {
-        Ok(mut app) => app.run(),
-        Err(e) => {
-            eprintln!("Failed to start TUI: {}", e);
-            Err(e)
-        }
-    }
+    let mut app = App::new();
+    app.run()
 }

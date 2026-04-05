@@ -235,7 +235,7 @@ impl StdioBackend {
         match msg {
             FrontendMessage::SubmitLine { line } => {
                 // Echo user input
-                self.send_event(stdout, BackendEvent::TranscriptItem {
+                if self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "user".to_string(),
                         text: Some(line.clone()),
@@ -243,27 +243,33 @@ impl StdioBackend {
                         tool_input: None,
                         is_error: None,
                     },
-                })?;
+                }).is_err() {
+                    eprintln!("[StdioBackend] Failed to send event, frontend may have disconnected");
+                    return Ok(()); // Don't propagate error, just log it
+                }
 
                 // Process the line
-                self.process_line(stdout, &line).await?;
+                if self.process_line(stdout, &line).await.is_err() {
+                    eprintln!("[StdioBackend] Failed to process line, frontend may have disconnected");
+                    return Ok(()); // Don't propagate error, just log it
+                }
             }
             FrontendMessage::Shutdown => {
-                self.send_event(stdout, BackendEvent::Shutdown)?;
+                let _ = self.send_event(stdout, BackendEvent::Shutdown);
                 let _ = self.shutdown_tx.send(()).await;
             }
             FrontendMessage::ListSessions => {
                 // For now, send empty session list
-                self.send_event(stdout, BackendEvent::SelectRequest {
+                let _ = self.send_event(stdout, BackendEvent::SelectRequest {
                     modal: serde_json::json!({
                         "title": "Sessions",
                         "submit_prefix": "/resume ",
                     }),
                     select_options: vec![],
-                })?;
+                });
             }
             FrontendMessage::QuestionResponse { request_id: _, answer } => {
-                self.send_event(stdout, BackendEvent::TranscriptItem {
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "user".to_string(),
                         text: Some(answer),
@@ -271,11 +277,11 @@ impl StdioBackend {
                         tool_input: None,
                         is_error: None,
                     },
-                })?;
+                });
             }
             FrontendMessage::PermissionResponse { request_id: _, allowed } => {
                 let status = if allowed { "allowed" } else { "denied" };
-                self.send_event(stdout, BackendEvent::TranscriptItem {
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "system".to_string(),
                         text: Some(format!("Permission {}", status)),
@@ -283,7 +289,7 @@ impl StdioBackend {
                         tool_input: None,
                         is_error: None,
                     },
-                })?;
+                });
             }
         }
         Ok(())
@@ -298,14 +304,20 @@ impl StdioBackend {
 
         // Handle slash commands
         if trimmed.starts_with('/') {
-            self.handle_command(stdout, trimmed).await?;
-            self.send_event(stdout, BackendEvent::LineComplete)?;
+            let _ = self.handle_command(stdout, trimmed).await;
+            let _ = self.send_event(stdout, BackendEvent::LineComplete);
             return Ok(());
         }
 
         // Initialize query engine if not already done
         if self.query_engine.is_none() {
-            self.init_query_engine().await?;
+            if self.init_query_engine().await.is_err() {
+                let _ = self.send_event(stdout, BackendEvent::Error {
+                    message: "Failed to initialize query engine".to_string(),
+                });
+                let _ = self.send_event(stdout, BackendEvent::LineComplete);
+                return Ok(());
+            }
         }
 
         // Send to AI
@@ -313,7 +325,7 @@ impl StdioBackend {
             match query_engine.send_message(trimmed.to_string()).await {
                 Ok(response) => {
                     // Send AI response
-                    self.send_event(stdout, BackendEvent::TranscriptItem {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                         item: TranscriptItem {
                             role: "assistant".to_string(),
                             text: Some(response),
@@ -321,21 +333,21 @@ impl StdioBackend {
                             tool_input: None,
                             is_error: None,
                         },
-                    })?;
+                    });
                 }
                 Err(e) => {
-                    self.send_event(stdout, BackendEvent::Error {
+                    let _ = self.send_event(stdout, BackendEvent::Error {
                         message: format!("Error: {}", e),
-                    })?;
+                    });
                 }
             }
         } else {
-            self.send_event(stdout, BackendEvent::Error {
+            let _ = self.send_event(stdout, BackendEvent::Error {
                 message: "Query engine not initialized".to_string(),
-            })?;
+            });
         }
 
-        self.send_event(stdout, BackendEvent::LineComplete)?;
+        let _ = self.send_event(stdout, BackendEvent::LineComplete);
         Ok(())
     }
 
@@ -346,15 +358,15 @@ impl StdioBackend {
     ) -> io::Result<()> {
         match cmd {
             "/exit" | "/quit" => {
-                self.send_event(stdout, BackendEvent::Shutdown)?;
+                let _ = self.send_event(stdout, BackendEvent::Shutdown);
                 let _ = self.shutdown_tx.send(()).await;
             }
             "/clear" => {
-                self.send_event(stdout, BackendEvent::ClearTranscript)?;
+                let _ = self.send_event(stdout, BackendEvent::ClearTranscript);
             }
             "/help" => {
                 let help_text = self.get_available_commands().join("\n");
-                self.send_event(stdout, BackendEvent::TranscriptItem {
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "system".to_string(),
                         text: Some(format!("Available commands:\n{}", help_text)),
@@ -362,19 +374,19 @@ impl StdioBackend {
                         tool_input: None,
                         is_error: None,
                     },
-                })?;
+                });
             }
             "/status" => {
-                self.send_event(stdout, BackendEvent::StateSnapshot {
+                let _ = self.send_event(stdout, BackendEvent::StateSnapshot {
                     state: self.get_initial_state(),
                     mcp_servers: vec![],
                     bridge_sessions: vec![],
-                })?;
+                });
             }
             cmd if cmd.starts_with("/permissions") => {
                 if cmd.contains("set") {
                     let mode = cmd.split_whitespace().nth(2).unwrap_or("default");
-                    self.send_event(stdout, BackendEvent::TranscriptItem {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                         item: TranscriptItem {
                             role: "system".to_string(),
                             text: Some(format!("Permission mode set to: {}", mode)),
@@ -382,9 +394,9 @@ impl StdioBackend {
                             tool_input: None,
                             is_error: None,
                         },
-                    })?;
+                    });
                 } else {
-                    self.send_event(stdout, BackendEvent::SelectRequest {
+                    let _ = self.send_event(stdout, BackendEvent::SelectRequest {
                         modal: serde_json::json!({
                             "title": "Permission Mode",
                             "kind": "permission_picker",
@@ -394,11 +406,11 @@ impl StdioBackend {
                             SelectOption { value: "full_auto".to_string(), label: "Auto".to_string(), description: Some("Allow all tools".to_string()) },
                             SelectOption { value: "plan".to_string(), label: "Plan".to_string(), description: Some("Block writes".to_string()) },
                         ],
-                    })?;
+                    });
                 }
             }
             "/plan" => {
-                self.send_event(stdout, BackendEvent::TranscriptItem {
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "system".to_string(),
                         text: Some("Plan mode toggled".to_string()),
@@ -406,10 +418,10 @@ impl StdioBackend {
                         tool_input: None,
                         is_error: None,
                     },
-                })?;
+                });
             }
             _ => {
-                self.send_event(stdout, BackendEvent::TranscriptItem {
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "system".to_string(),
                         text: Some(format!("Unknown command: {}", cmd)),
@@ -417,7 +429,7 @@ impl StdioBackend {
                         tool_input: None,
                         is_error: Some(true),
                     },
-                })?;
+                });
             }
         }
         Ok(())

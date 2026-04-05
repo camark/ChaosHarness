@@ -98,9 +98,15 @@ impl Tool for WebFetchTool {
                     Err(e) => return Ok(ToolResult::error(format!("Failed to read response: {}", e))),
                 };
 
-                // Truncate very long responses
+                // Truncate very long responses (at char boundary, not byte boundary)
                 let truncated = if text.len() > 50000 {
-                    format!("{}...\n[truncated]", &text[..50000])
+                    // Find the last character boundary before 50000
+                    let truncate_at = text.char_indices()
+                        .take_while(|(i, _)| *i < 50000)
+                        .last()
+                        .map(|(i, _)| i)
+                        .unwrap_or(50000);
+                    format!("{}...\n[truncated]", &text[..truncate_at])
                 } else {
                     text
                 };

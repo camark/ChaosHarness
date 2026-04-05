@@ -62,6 +62,24 @@ impl QueryEngine {
             url.contains("moonshot") || url.contains("openai")
         }) || api_key.starts_with("sk-");
 
+        // Build system prompt with skills section
+        let mut system_prompt = settings.system_prompt.clone();
+        if system_prompt.is_none() {
+            system_prompt = Some(crate::prompts::system_prompt::generate_system_prompt(None));
+        }
+
+        // Add skills section if skills are available
+        if let Some(skills_section) = crate::prompts::context::build_skills_section(cwd.to_str().unwrap_or("")) {
+            if let Some(ref mut prompt) = system_prompt {
+                prompt.push_str("\n\n");
+                prompt.push_str(&skills_section);
+            }
+        }
+
+        // Create mutable settings clone to update system_prompt
+        let mut settings = settings;
+        settings.system_prompt = system_prompt;
+
         Ok(Self {
             client,
             tool_registry,
