@@ -1,5 +1,5 @@
 //! Ratatui TUI frontend for Rust Harness
-//! Simple and reliable version
+//! Simple synchronous version for better reliability on Windows
 
 use crossterm::{
     event::{self, KeyCode, KeyEventKind, KeyModifiers},
@@ -22,9 +22,8 @@ use std::{
 struct Backend {
     tx: mpsc::Sender<String>,
     rx: mpsc::Receiver<String>,
-    _child: Child,
-    _stdin_handle: thread::JoinHandle<()>,
-    _stdout_handle: thread::JoinHandle<()>,
+    _thread: thread::JoinHandle<()>,
+    _child: Child, // Keep child process alive
 }
 
 impl Backend {
@@ -32,7 +31,7 @@ impl Backend {
         let (tx, rx) = mpsc::channel();
         let (out_tx, out_rx) = mpsc::channel();
 
-        // Use debug build directly
+        // Start backend process - use debug build directly
         let bin_path = if cfg!(windows) {
             "target/debug/rust_harness.exe"
         } else {
@@ -46,43 +45,47 @@ impl Backend {
             .stderr(Stdio::null())
             .spawn()?;
 
-        let stdin = child.stdin.take().unwrap();
+        let mut stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
 
-        // Thread to write to stdin
-        let stdin_handle = thread::spawn(move || {
-            let mut writer = stdin;
-            for msg in rx {
-                let _ = writeln!(writer, "{}", msg);
-                let _ = writer.flush();
-            }
-        });
-
-        // Thread to read from stdout
-        let stdout_handle = thread::spawn(move || {
-            let mut reader = BufReader::new(stdout);
-            let mut line = String::new();
-            loop {
-                line.clear();
-                match reader.read_line(&mut line) {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        let trimmed = line.trim();
-                        if let Some(json_str) = trimmed.strip_prefix("OHJSON:") {
-                            let _ = out_tx.send(json_str.to_string());
+        // Spawn reader thread
+        let handle = thread::spawn(move || {
+            // Thread 1: Read stdout
+            let stdout_thread = thread::spawn(move || {
+                let mut reader = BufReader::new(stdout);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            let trimmed = line.trim();
+                            if let Some(json_str) = trimmed.strip_prefix("OHJSON:") {
+                                let _ = out_tx.send(json_str.to_string());
+                            }
                         }
+                        Err(_) => break,
                     }
-                    Err(_) => break,
                 }
-            }
+            });
+
+            // Thread 2: Write stdin
+            let stdin_thread = thread::spawn(move || {
+                for msg in rx {
+                    let _ = writeln!(stdin, "{}", msg);
+                    let _ = stdin.flush();
+                }
+            });
+
+            let _ = stdout_thread.join();
+            let _ = stdin_thread.join();
         });
 
         Ok(Self {
             tx,
             rx: out_rx,
+            _thread: handle,
             _child: child,
-            _stdin_handle: stdin_handle,
-            _stdout_handle: stdout_handle,
         })
     }
 
@@ -205,6 +208,7 @@ impl App {
         self.input.clear();
         self.busy = true;
 
+        // Don't add user message here - backend will echo it via transcript_item
         // Send to backend
         let msg = format!(r#"{{"type":"submit_line","line":"{}"}}"#,
             line.replace('\\', "\\\\").replace('"', "\\\""));
