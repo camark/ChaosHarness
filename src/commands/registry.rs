@@ -3,6 +3,7 @@
 use crate::commands::types::{CommandContext, CommandResult, SlashCommand};
 use crate::memory::MemoryManager;
 use std::collections::HashMap;
+use std::path::Path;
 
 /// Registry for slash commands
 pub struct CommandRegistry {
@@ -124,6 +125,12 @@ pub fn create_default_command_registry() -> CommandRegistry {
         name: "resume",
         description: "Resume a previous session",
         handler: cmd_resume,
+    });
+
+    registry.register(SlashCommand {
+        name: "init",
+        description: "Initialize default configuration and project structure",
+        handler: cmd_init,
     });
 
     registry
@@ -367,4 +374,39 @@ fn cmd_resume(args: &str, ctx: &CommandContext) -> CommandResult {
         lines.push("Use /resume <session_id> to restore a specific session.".to_string());
         CommandResult::message(lines.join("\n"))
     }
+}
+
+fn cmd_init(args: &str, ctx: &CommandContext) -> CommandResult {
+    use crate::config::default_settings::{initialize_defaults, initialize_project};
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let mut results = Vec::new();
+
+    // Initialize global config if --global flag is passed or no args
+    if tokens.is_empty() || tokens.contains(&"--global") || tokens.contains(&"-g") {
+        match initialize_defaults() {
+            Ok(msg) => results.push(msg),
+            Err(e) => return CommandResult::message(format!("Error initializing global config: {}", e)),
+        }
+    }
+
+    // Initialize project config if --project flag is passed or no args
+    if tokens.is_empty() || tokens.contains(&"--project") || tokens.contains(&"-p") {
+        match initialize_project(&ctx.cwd) {
+            Ok(msg) => results.push(msg),
+            Err(e) => return CommandResult::message(format!("Error initializing project: {}", e)),
+        }
+    }
+
+    // Create CLAUDE.md if not exists
+    let claude_md_path = std::path::Path::new(&ctx.cwd).join("CLAUDE.md");
+    if !claude_md_path.exists() {
+        let content = "# CLAUDE.md\n\nThis file provides guidance to Claude Code when working with code in this repository.\n\n## Project Overview\n\nTODO: Describe your project\n\n## Build & Run\n\n```bash\n# Build\ncargo build\n\n# Run\ncargo run\n```\n\n## Development\n\n```bash\n# Run tests\ncargo test\n\n# Lint\ncargo clippy -- -D warnings\n\n# Format\ncargo fmt\n```\n";
+        if let Err(e) = std::fs::write(&claude_md_path, content) {
+            return CommandResult::message(format!("Error creating CLAUDE.md: {}", e));
+        }
+        results.push(format!("Created: {}", claude_md_path.display()));
+    }
+
+    CommandResult::message(results.join("\n\n"))
 }
