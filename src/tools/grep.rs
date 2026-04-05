@@ -158,6 +158,15 @@ async fn search_files(
 
 fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
     let path = PathBuf::from(candidate);
+
+    // Expand ~ to home directory
+    if candidate.starts_with("~/") || candidate == "~" {
+        if let Some(home_dir) = dirs::home_dir() {
+            let remainder = if candidate == "~" { "" } else { &candidate[2..] };
+            return home_dir.join(remainder);
+        }
+    }
+
     if path.is_absolute() {
         path
     } else {

@@ -38,7 +38,16 @@
       "Bash(start.bat:*)",
       "Bash(./start.bat:*)",
       "Bash(tasklist)",
-      "Bash(timeout 5 sleep 5)"
+      "Bash(timeout 5 sleep 5)",
+      "WebSearch",
+      "WebFetch(domain:platform.kimi.com)",
+      "Bash(echo '{\"type\":\"submit_line\",\"line\":\"read_file C:\\\\\\\\Users\\\\\\\\gongm\\\\\\\\Desktop\\\\\\\\2025 巩明工作汇总.xlsx\"}')",
+      "Bash(echo '{\"type\":\"submit_line\",\"line\":\"/run read_file {\\\\\"path\\\\\": \\\\\"C:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\gongm\\\\\\\\\\\\\\\\Desktop\\\\\\\\\\\\\\\\2025 巩明工作汇总.xlsx\\\\\"}\"}')",
+      "Bash(dir \"C:\\\\Users\\\\gongm\\\\Desktop\" /b)",
+      "Bash(start-tui.bat:*)",
+      "Read(//tmp/**)",
+      "Bash(ps -W)",
+      "Bash(Stop-Process -Name rust_harness -Force)"
     ]
   }
 }

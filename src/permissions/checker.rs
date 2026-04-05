@@ -4,6 +4,7 @@ use crate::permissions::PermissionMode;
 use crate::config::PermissionSettings;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use serde_json::Value;
 
 /// Permission decision
 #[derive(Debug, Clone)]
@@ -26,15 +27,27 @@ impl PermissionChecker {
         }
     }
 
+    /// Extract file path from tool input if present
+    pub fn extract_file_path(input: &Value) -> Option<String> {
+        // Check common path fields in tool inputs
+        let fields = ["path", "file_path", "filepath", "root", "directory"];
+        for field in fields {
+            if let Some(path) = input[field].as_str() {
+                return Some(path.to_string());
+            }
+        }
+        None
+    }
+
     /// Evaluate permission for a tool invocation
-    pub fn evaluate(
+    pub async fn evaluate(
         &self,
         tool_name: &str,
         is_read_only: bool,
-        _file_path: Option<&str>,
+        file_path: Option<&str>,
         _command: Option<&str>,
     ) -> PermissionDecision {
-        let settings = self.settings.blocking_lock();
+        let settings = self.settings.lock().await;
 
         match settings.mode {
             PermissionMode::FullAuto => {
@@ -77,6 +90,54 @@ impl PermissionChecker {
                         requires_confirmation: false,
                         reason: String::new(),
                     };
+                }
+
+                // Check file path rules if a path is provided
+                if let Some(path) = file_path {
+                    // Check if path is under user's home directory
+                    if let Some(home_dir) = dirs::home_dir() {
+                        let path_buf = std::path::PathBuf::from(path);
+
+                        // Expand ~ to home directory
+                        let resolved_path = if path.starts_with("~/") || path == "~" {
+                            home_dir.clone()
+                        } else if path_buf.is_absolute() {
+                            path_buf
+                        } else {
+                            return PermissionDecision {
+                                allowed: false,
+                                requires_confirmation: true,
+                                reason: "Relative paths outside working directory not allowed".to_string(),
+                            };
+                        };
+
+                        // Check if path is under home directory
+                        if resolved_path.starts_with(&home_dir) {
+                            // Home directory and subdirectories are allowed
+                            if self.is_safe_tool(tool_name, is_read_only) {
+                                return PermissionDecision {
+                                    allowed: true,
+                                    requires_confirmation: false,
+                                    reason: String::new(),
+                                };
+                            }
+                        }
+                    }
+
+                    // Check explicit path rules
+                    for rule in &settings.path_rules {
+                        if path.contains(&rule.pattern) {
+                            return PermissionDecision {
+                                allowed: rule.allow,
+                                requires_confirmation: !rule.allow,
+                                reason: if rule.allow {
+                                    String::new()
+                                } else {
+                                    format!("Path '{}' is explicitly denied", rule.pattern)
+                                },
+                            };
+                        }
+                    }
                 }
 
                 // Default: safe tools only

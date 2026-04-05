@@ -4,7 +4,7 @@ use crate::api::client::{ApiClient, ApiRequest, ApiUsage};
 use crate::api::errors::ApiError;
 use crate::config::Settings;
 use crate::engine::messages::{
-    assistant_message_from_api, ConversationMessage, MessageContent, ToolResultBlock, ToolUseData,
+    assistant_message_from_api, ConversationMessage, MessageContent, MessageRole, ToolResultBlock, ToolUseData,
 };
 use crate::hooks::executor::HookExecutor;
 use crate::hooks::registry::HookRegistry;
@@ -42,12 +42,13 @@ pub struct QueryEngine {
     messages: Arc<Mutex<Vec<ConversationMessage>>>,
     usage: Arc<Mutex<UsageTracker>>,
     max_turns: usize,
+    use_openai_format: bool,
 }
 
 impl QueryEngine {
     pub fn new(settings: Settings, tool_registry: ToolRegistry, cwd: PathBuf) -> Result<Self, String> {
         let api_key = settings.resolve_api_key()?;
-        let client = ApiClient::new(api_key, settings.base_url.clone());
+        let client = ApiClient::new(api_key.clone(), settings.base_url.clone());
 
         let permission_checker = PermissionChecker::new(settings.permission.clone());
 
@@ -57,6 +58,11 @@ impl QueryEngine {
             let _ = hook_registry.register_blocking(hook_def.clone());
         }
         let hook_executor = HookExecutor::new(hook_registry);
+
+        // Detect if we should use OpenAI format
+        let use_openai_format = settings.base_url.as_ref().map_or(false, |url| {
+            url.contains("moonshot") || url.contains("openai")
+        }) || api_key.starts_with("sk-");
 
         Ok(Self {
             client,
@@ -68,6 +74,7 @@ impl QueryEngine {
             messages: Arc::new(Mutex::new(Vec::new())),
             usage: Arc::new(Mutex::new(UsageTracker::default())),
             max_turns: 200,
+            use_openai_format,
         })
     }
 
@@ -188,7 +195,23 @@ impl QueryEngine {
             // Add tool results to messages
             {
                 let mut messages = self.messages.lock().await;
-                messages.push(ConversationMessage::tool_results(tool_results));
+                if self.use_openai_format {
+                    // OpenAI format: each tool result is a separate message
+                    for result in tool_results {
+                        messages.push(ConversationMessage {
+                            role: MessageRole::User,
+                            content: vec![MessageContent::ToolResult {
+                                tool_use_id: result.tool_use_id,
+                                content: result.content,
+                                is_error: result.is_error,
+                            }],
+                            tool_uses: Vec::new(),
+                        });
+                    }
+                } else {
+                    // Anthropic format: all tool results in one message
+                    messages.push(ConversationMessage::tool_results(tool_results));
+                }
             }
         }
 
@@ -272,9 +295,9 @@ impl QueryEngine {
         let decision = self.permission_checker.evaluate(
             &tool_use.name,
             is_read_only,
+            crate::permissions::checker::PermissionChecker::extract_file_path(&tool_use.input).as_deref(),
             None,
-            None,
-        );
+        ).await;
 
         if !decision.allowed {
             return ToolResultBlock {
@@ -334,6 +357,7 @@ impl Clone for QueryEngine {
             messages: self.messages.clone(),
             usage: self.usage.clone(),
             max_turns: self.max_turns,
+            use_openai_format: self.use_openai_format,
         }
     }
 }

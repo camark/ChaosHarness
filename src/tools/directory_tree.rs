@@ -46,6 +46,14 @@ impl DirectoryTreeTool {
     fn resolve_path(&self, input_path: Option<&str>) -> PathBuf {
         match input_path {
             Some(p) if !p.is_empty() => {
+                // Expand ~ to home directory
+                if p.starts_with("~/") || p == "~" {
+                    if let Some(home_dir) = dirs::home_dir() {
+                        let remainder = if p == "~" { "" } else { &p[2..] };
+                        return home_dir.join(remainder);
+                    }
+                }
+
                 let path = Path::new(p);
                 if path.is_absolute() {
                     path.to_path_buf()

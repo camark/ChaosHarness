@@ -12,11 +12,16 @@ pub fn glob_input_schema() -> Value {
         "properties": {
             "pattern": {
                 "type": "string",
-                "description": "Glob pattern relative to the working directory"
+                "description": "Glob pattern to match files, e.g. \"*.docx\", \"**/*.xls\""
             },
             "root": {
                 "type": "string",
-                "description": "Optional search root directory"
+                "description": "Root directory to search from, e.g. \".\", \"~/Desktop\", \"/home/user\""
+            },
+            "recursive": {
+                "type": "boolean",
+                "description": "Search recursively in subdirectories",
+                "default": false
             },
             "limit": {
                 "type": "integer",
@@ -40,7 +45,7 @@ impl Tool for GlobTool {
     }
 
     fn description(&self) -> &'static str {
-        "List files matching a glob pattern."
+        "List files matching a glob pattern. Use root parameter to specify the search directory, e.g. root: \"~/Desktop\" for user's desktop."
     }
 
     fn input_schema(&self) -> Value {
@@ -61,22 +66,27 @@ impl Tool for GlobTool {
             .map(|s| resolve_path(&context.cwd, s))
             .unwrap_or_else(|| context.cwd.clone());
 
+        let recursive = input["recursive"].as_bool().unwrap_or(false);
         let limit = input["limit"].as_u64().unwrap_or(200).min(5000) as usize;
 
         let mut matches: Vec<String> = Vec::new();
 
-        // Use globset for proper glob matching
-        let glob_pattern = if root.join(pattern).exists() {
-            pattern.to_string()
-        } else {
-            format!("{}", pattern)
-        };
+        // For non-recursive search, filter out files in subdirectories
+        let search_pattern = root.join(pattern);
 
-        // Simple glob implementation using std::fs
-        if let Ok(entries) = glob::glob(&root.join(&glob_pattern).to_string_lossy()) {
+        if let Ok(entries) = glob::glob(&search_pattern.to_string_lossy()) {
             for entry in entries.take(limit) {
                 if let Ok(path) = entry {
                     if path.is_file() {
+                        // For non-recursive, check that the file is directly in root
+                        if !recursive {
+                            if let Some(parent) = path.parent() {
+                                if parent != root {
+                                    continue;
+                                }
+                            }
+                        }
+
                         let relative = path
                             .strip_prefix(&root)
                             .unwrap_or(&path)
@@ -112,6 +122,15 @@ impl Tool for GlobTool {
 
 fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
     let path = PathBuf::from(candidate);
+
+    // Expand ~ to home directory
+    if candidate.starts_with("~/") || candidate == "~" {
+        if let Some(home_dir) = dirs::home_dir() {
+            let remainder = if candidate == "~" { "" } else { &candidate[2..] };
+            return home_dir.join(remainder);
+        }
+    }
+
     if path.is_absolute() {
         path
     } else {

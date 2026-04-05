@@ -23,6 +23,7 @@ struct Backend {
     tx: mpsc::Sender<String>,
     rx: mpsc::Receiver<String>,
     _thread: thread::JoinHandle<()>,
+    _child: Option<Child>, // Keep child process alive
 }
 
 impl Backend {
@@ -84,6 +85,7 @@ impl Backend {
             tx,
             rx: out_rx,
             _thread: handle,
+            _child: child,
         }
     }
 

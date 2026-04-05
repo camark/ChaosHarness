@@ -34,6 +34,8 @@ struct OpenAIRequest {
     messages: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +73,24 @@ struct OpenAIChoice {
 struct OpenAIMessage {
     role: String,
     content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<OpenAIToolCall>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: OpenAIFunctionCall,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIFunctionCall {
+    name: String,
+    arguments: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -215,7 +235,13 @@ impl ApiClient {
         let messages: Vec<Value> = request
             .messages
             .iter()
-            .map(|m| m.to_api_param())
+            .map(|m| {
+                if use_openai_format {
+                    m.to_openai_api_param()
+                } else {
+                    m.to_api_param()
+                }
+            })
             .collect();
 
         // Build request body based on API format
@@ -238,6 +264,7 @@ impl ApiClient {
                 model: request.model.clone(),
                 messages: openai_messages,
                 max_tokens: Some(request.max_tokens),
+                tools: request.tools.clone(),
             };
 
             let mut req = self
@@ -340,13 +367,25 @@ async fn parse_openai_response(response: Response) -> Result<ApiMessage, ApiErro
     })?;
 
     let mut content: Vec<MessageContent> = Vec::new();
-    let tool_uses: Vec<ToolUseData> = Vec::new();
+    let mut tool_uses: Vec<ToolUseData> = Vec::new();
 
-    // OpenAI format: content is a string, not tool_use blocks
-    // For now, treat all content as text
-    // Moonshot K2.5 doesn't support tool_use in OpenAI format
+    // Parse text content
     if let Some(text) = &choice.message.content {
         content.push(MessageContent::Text { text: text.clone() });
+    }
+
+    // Parse tool calls
+    for tool_call in &choice.message.tool_calls {
+        if tool_call.call_type == "function" {
+            let input: Value = serde_json::from_str(&tool_call.function.arguments)
+                .unwrap_or_else(|_| serde_json::json!({}));
+
+            tool_uses.push(ToolUseData {
+                id: tool_call.id.clone(),
+                name: tool_call.function.name.clone(),
+                input,
+            });
+        }
     }
 
     Ok(ApiMessage {
@@ -537,6 +576,7 @@ mod tests {
                 serde_json::json!({"role": "user", "content": "Hello"}),
             ],
             max_tokens: Some(1024),
+            tools: vec![],
         };
 
         let json = serde_json::to_string_pretty(&body).unwrap();

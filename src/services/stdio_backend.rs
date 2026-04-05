@@ -4,6 +4,8 @@
 
 use crate::config::Settings;
 use crate::commands::registry::CommandRegistry;
+use crate::engine::query::QueryEngine;
+use crate::tools::init_tools;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Write};
@@ -103,16 +105,37 @@ pub struct StdioBackend {
     settings: Settings,
     command_registry: CommandRegistry,
     shutdown_tx: mpsc::Sender<()>,
+    query_engine: Option<QueryEngine>,
+    cwd: String,
 }
 
 impl StdioBackend {
     pub fn new(settings: Settings, shutdown_tx: mpsc::Sender<()>) -> Self {
         let command_registry = CommandRegistry::new();
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
         Self {
             settings,
             command_registry,
             shutdown_tx,
+            query_engine: None,
+            cwd,
         }
+    }
+
+    async fn init_query_engine(&mut self) -> io::Result<()> {
+        if self.query_engine.is_none() {
+            let tool_registry = init_tools().await;
+            self.query_engine = Some(QueryEngine::new(
+                self.settings.clone(),
+                tool_registry,
+                self.cwd.clone().into(),
+            ).map_err(|e| {
+                io::Error::new(io::ErrorKind::Other, format!("Failed to create query engine: {}", e))
+            })?);
+        }
+        Ok(())
     }
 
     pub async fn run(mut self) -> io::Result<()> {
@@ -280,18 +303,37 @@ impl StdioBackend {
             return Ok(());
         }
 
-        // Simple echo response for now
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // Initialize query engine if not already done
+        if self.query_engine.is_none() {
+            self.init_query_engine().await?;
+        }
 
-        self.send_event(stdout, BackendEvent::TranscriptItem {
-            item: TranscriptItem {
-                role: "assistant".to_string(),
-                text: Some(format!("You said: {}", trimmed)),
-                tool_name: None,
-                tool_input: None,
-                is_error: None,
-            },
-        })?;
+        // Send to AI
+        if let Some(ref mut query_engine) = self.query_engine {
+            match query_engine.send_message(trimmed.to_string()).await {
+                Ok(response) => {
+                    // Send AI response
+                    self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "assistant".to_string(),
+                            text: Some(response),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    })?;
+                }
+                Err(e) => {
+                    self.send_event(stdout, BackendEvent::Error {
+                        message: format!("Error: {}", e),
+                    })?;
+                }
+            }
+        } else {
+            self.send_event(stdout, BackendEvent::Error {
+                message: "Query engine not initialized".to_string(),
+            })?;
+        }
 
         self.send_event(stdout, BackendEvent::LineComplete)?;
         Ok(())

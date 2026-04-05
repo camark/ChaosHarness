@@ -89,6 +89,23 @@ impl ConversationMessage {
         }
     }
 
+    /// Create separate tool result messages for OpenAI format
+    /// Each tool result is a separate message with role "tool"
+    pub fn tool_results_openai(results: Vec<ToolResultBlock>) -> Vec<Self> {
+        results
+            .into_iter()
+            .map(|r| Self {
+                role: MessageRole::User, // Will be converted to "tool" by to_openai_api_param
+                content: vec![MessageContent::ToolResult {
+                    tool_use_id: r.tool_use_id,
+                    content: r.content,
+                    is_error: r.is_error,
+                }],
+                tool_uses: Vec::new(),
+            })
+            .collect()
+    }
+
     pub fn with_tool_uses(mut self, tool_uses: Vec<ToolUseData>) -> Self {
         self.tool_uses = tool_uses;
         self
@@ -111,6 +128,90 @@ impl ConversationMessage {
                         "input": tool_use.input
                     }));
                 }
+            }
+        }
+
+        param
+    }
+
+    /// Convert message to OpenAI API format
+    pub fn to_openai_api_param(&self) -> Value {
+        let mut content_array: Vec<Value> = Vec::new();
+        let mut tool_calls: Vec<Value> = Vec::new();
+
+        for c in &self.content {
+            match c {
+                MessageContent::Text { text } => {
+                    content_array.push(json!({"type": "text", "text": text}));
+                }
+                MessageContent::ToolUse { id, name, input } => {
+                    tool_calls.push(json!({
+                        "id": id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": input.to_string()
+                        }
+                    }));
+                }
+                MessageContent::ToolResult { tool_use_id, content, is_error } => {
+                    // OpenAI format: tool_result goes in content as text
+                    content_array.push(json!({
+                        "type": "text",
+                        "text": content
+                    }));
+                }
+                MessageContent::Image { source } => {
+                    content_array.push(json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{};base64,{}", source.media_type, source.data)
+                        }
+                    }));
+                }
+            }
+        }
+
+        let mut param = json!({
+            "role": self.role,
+        });
+
+        // OpenAI format: tool_calls is a separate field, not in content
+        if !tool_calls.is_empty() {
+            param["tool_calls"] = json!(tool_calls);
+        }
+
+        // Content: for assistant messages with tool_calls, content can be empty string or null
+        // For user messages with tool results, content is the text
+        if self.role == MessageRole::Assistant && !tool_calls.is_empty() {
+            param["content"] = Value::Null;
+            // Moonshot K2.5 requires reasoning_content field
+            param["reasoning_content"] = json!("Analyzing tool requests...");
+        } else {
+            param["content"] = json!(content_array);
+        }
+
+        // OpenAI format: tool response messages have role "tool" and include tool_call_id
+        if self.role == MessageRole::User && !self.content.is_empty() {
+            // Check if this is a tool result message
+            let is_tool_result = self.content.iter().any(|c| matches!(c, MessageContent::ToolResult { .. }));
+            if is_tool_result && self.content.len() == 1 {
+                // Single tool result - use OpenAI tool format
+                if let MessageContent::ToolResult { tool_use_id, content, is_error } = &self.content[0] {
+                    param["role"] = json!("tool");
+                    param["tool_call_id"] = json!(tool_use_id);
+                    param["content"] = json!(content);
+                }
+            } else if is_tool_result {
+                // Multiple tool results - concatenate them
+                let combined_content: String = self.content.iter()
+                    .filter_map(|c| match c {
+                        MessageContent::ToolResult { content, .. } => Some(content.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n---\n");
+                param["content"] = json!(combined_content);
             }
         }
 

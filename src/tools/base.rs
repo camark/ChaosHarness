@@ -77,9 +77,12 @@ pub trait Tool: Send + Sync {
     /// Return the tool schema for the Anthropic Messages API
     fn to_api_schema(&self) -> Value {
         serde_json::json!({
-            "name": self.name(),
-            "description": self.description(),
-            "input_schema": self.input_schema()
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": self.input_schema()
+            }
         })
     }
 }
@@ -143,5 +146,22 @@ impl ToolRegistry {
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::init_tools;
+
+    #[tokio::test]
+    async fn test_tool_schema_output() {
+        let registry = init_tools().await;
+        let schemas = registry.to_api_schema().await;
+
+        for schema in schemas {
+            println!("Tool schema: {:#?}", schema);
+            println!();
+        }
     }
 }
