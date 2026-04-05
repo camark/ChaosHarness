@@ -1,6 +1,7 @@
 //! Slash command registry
 
 use crate::commands::types::{CommandContext, CommandResult, SlashCommand};
+use crate::memory::MemoryManager;
 use std::collections::HashMap;
 
 /// Registry for slash commands
@@ -113,6 +114,18 @@ pub fn create_default_command_registry() -> CommandRegistry {
         handler: cmd_config,
     });
 
+    registry.register(SlashCommand {
+        name: "memory",
+        description: "Manage project memory (list/show/add/remove)",
+        handler: cmd_memory,
+    });
+
+    registry.register(SlashCommand {
+        name: "resume",
+        description: "Resume a previous session",
+        handler: cmd_resume,
+    });
+
     registry
 }
 
@@ -216,5 +229,142 @@ fn cmd_config(args: &str, ctx: &CommandContext) -> CommandResult {
         ))
     } else {
         CommandResult::message("Usage: /config [show|set KEY VALUE]")
+    }
+}
+
+fn cmd_memory(args: &str, ctx: &CommandContext) -> CommandResult {
+    use crate::memory::{list_memory_files, add_memory_entry, remove_memory_entry, get_memory_entrypoint};
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+
+    if tokens.is_empty() {
+        // Show memory summary
+        let memory_dir = MemoryManager::get_project_memory_dir(&ctx.cwd);
+        let entrypoint = get_memory_entrypoint(&ctx.cwd);
+        return CommandResult::message(format!(
+            "Memory directory: {}\nEntrypoint: {}",
+            memory_dir.display(),
+            entrypoint.unwrap_or_else(|| "Not initialized".to_string())
+        ));
+    }
+
+    let action = tokens[0];
+    let rest = if tokens.len() > 1 {
+        tokens[1..].join(" ")
+    } else {
+        String::new()
+    };
+
+    match action {
+        "list" => {
+            let files = list_memory_files(&ctx.cwd);
+            if files.is_empty() {
+                CommandResult::message("No memory files.")
+            } else {
+                let lines: Vec<_> = files
+                    .iter()
+                    .filter_map(|p| p.file_name().and_then(|s| s.to_str()))
+                    .collect();
+                CommandResult::message(lines.join("\n"))
+            }
+        }
+        "show" => {
+            if rest.is_empty() {
+                return CommandResult::message("Usage: /memory show <name>");
+            }
+            match get_memory_entrypoint(&ctx.cwd) {
+                Some(content) => CommandResult::message(content),
+                None => CommandResult::message("No MEMORY.md found."),
+            }
+        }
+        "add" => {
+            // Format: /memory add TITLE :: CONTENT
+            if let Some(separator_pos) = rest.find("::") {
+                let title = rest[..separator_pos].trim();
+                let content = rest[separator_pos + 2..].trim();
+
+                if title.is_empty() || content.is_empty() {
+                    return CommandResult::message("Usage: /memory add TITLE :: CONTENT");
+                }
+
+                match add_memory_entry(&ctx.cwd, title, content) {
+                    Ok(path) => CommandResult::message(format!(
+                        "Added memory entry: {}",
+                        path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown")
+                    )),
+                    Err(e) => CommandResult::message(format!("Error: {}", e)),
+                }
+            } else {
+                CommandResult::message("Usage: /memory add TITLE :: CONTENT")
+            }
+        }
+        "remove" => {
+            if rest.is_empty() {
+                return CommandResult::message("Usage: /memory remove <name>");
+            }
+            match remove_memory_entry(&ctx.cwd, &rest) {
+                Ok(true) => CommandResult::message(format!("Removed memory entry: {}", rest)),
+                Ok(false) => CommandResult::message(format!("Memory entry not found: {}", rest)),
+                Err(e) => CommandResult::message(format!("Error: {}", e)),
+            }
+        }
+        _ => CommandResult::message("Usage: /memory [list|show|add TITLE :: CONTENT|remove NAME]"),
+    }
+}
+
+fn cmd_resume(args: &str, ctx: &CommandContext) -> CommandResult {
+    use crate::services::session_storage::{list_session_snapshots, load_session_by_id, load_session_snapshot};
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+
+    // /resume <session_id> - load a specific session
+    if !tokens.is_empty() {
+        let sid = tokens[0];
+        match load_session_by_id(&ctx.cwd, sid) {
+            Some(snapshot) => {
+                let summary = snapshot.summary.as_deref().unwrap_or("(no summary)").chars().take(60).collect::<String>();
+                CommandResult::message(format!(
+                    "Restored {} messages from session {} ({})",
+                    snapshot.messages.len(),
+                    sid,
+                    summary
+                ))
+            }
+            None => CommandResult::message(format!("Session not found: {}", sid)),
+        }
+    } else {
+        // /resume - list sessions
+        let sessions = list_session_snapshots(&ctx.cwd, 10);
+        if sessions.is_empty() {
+            // Fall back to latest.json
+            match load_session_snapshot(&ctx.cwd) {
+                Some(snapshot) => {
+                    return CommandResult::message(format!(
+                        "Restored {} messages from the latest session.",
+                        snapshot.messages.len()
+                    ));
+                }
+                None => {
+                    return CommandResult::message("No saved sessions found for this project.");
+                }
+            }
+        }
+
+        let mut lines = vec!["Saved sessions:".to_string()];
+        for s in &sessions {
+            let ts = s.created_at.format("%m/%d %H:%M");
+            let summary = if s.summary.is_empty() {
+                "(no summary)".to_string()
+            } else {
+                s.summary.chars().take(50).collect::<String>()
+            };
+            lines.push(format!(
+                "  {}  {}  {}msg  {}",
+                s.session_id, ts, s.message_count, summary
+            ));
+        }
+        lines.push(String::new());
+        lines.push("Use /resume <session_id> to restore a specific session.".to_string());
+        CommandResult::message(lines.join("\n"))
     }
 }

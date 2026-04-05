@@ -199,6 +199,7 @@ When implementing missing features, reference the OpenHarness Python implementat
 ### Phase 2: Query Engine Enhancements - COMPLETED ✅
 ### Phase 3: Hooks System - COMPLETED ✅
 ### Phase 4: Skills & Plugins - COMPLETED ✅
+### Phase 5: Advanced Features - COMPLETED ✅
 
 **Implemented:**
 - ✅ CLI with clap (all flags from Python version)
@@ -216,9 +217,11 @@ When implementing missing features, reference the OpenHarness Python implementat
 - ✅ Configuration system with env overrides
 - ✅ Permission modes (Default/Plan/FullAuto)
 - ✅ Hooks system with PreToolUse/PostToolUse/OnError/OnTurnComplete events
-- ✅ Slash commands system (/help, /clear, /usage, /skills, /plugin, /hooks, /config, etc.)
+- ✅ Slash commands system (12 commands: /help, /exit, /clear, /version, /status, /usage, /skills, /plugin, /hooks, /config, /memory, /resume)
 - ✅ Skills loader from ~/.rust_harness/skills/
 - ✅ Plugin loader (claude-code compatible)
+- ✅ Memory manager with MEMORY.md persistence
+- ✅ Session storage and resume functionality
 
 ## Code Style
 
