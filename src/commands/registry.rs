@@ -209,6 +209,7 @@ fn cmd_skills(args: &str, ctx: &CommandContext) -> CommandResult {
 
 fn cmd_plugin(args: &str, ctx: &CommandContext) -> CommandResult {
     use crate::plugins::loader::load_plugins;
+    use crate::plugins::installer::{install_plugin_from_path, uninstall_plugin, enable_plugin, disable_plugin};
 
     let tokens: Vec<&str> = args.split_whitespace().collect();
 
@@ -219,11 +220,46 @@ fn cmd_plugin(args: &str, ctx: &CommandContext) -> CommandResult {
         }
         let lines: Vec<_> = plugins
             .iter()
-            .map(|p| format!("  {} v{} - {}", p.name, p.version, p.description.as_deref().unwrap_or("")))
+            .map(|p| {
+                let status = if p.enabled { "✓" } else { "✗" };
+                format!("  [{}] {} v{} - {}", status, p.name, p.version, p.description.as_deref().unwrap_or(""))
+            })
             .collect();
         CommandResult::message(format!("Installed plugins:\n{}", lines.join("\n")))
+    } else if tokens[0] == "install" {
+        if tokens.len() < 2 {
+            return CommandResult::message("Usage: /plugin install <path>");
+        }
+        match install_plugin_from_path(tokens[1], &ctx.cwd) {
+            Ok(msg) => CommandResult::message(msg),
+            Err(e) => CommandResult::message(format!("Failed to install plugin: {}", e)),
+        }
+    } else if tokens[0] == "uninstall" {
+        if tokens.len() < 2 {
+            return CommandResult::message("Usage: /plugin uninstall <name>");
+        }
+        match uninstall_plugin(tokens[1], &ctx.cwd) {
+            Ok(msg) => CommandResult::message(msg),
+            Err(e) => CommandResult::message(format!("Failed to uninstall plugin: {}", e)),
+        }
+    } else if tokens[0] == "enable" {
+        if tokens.len() < 2 {
+            return CommandResult::message("Usage: /plugin enable <name>");
+        }
+        match enable_plugin(tokens[1], &ctx.cwd) {
+            Ok(msg) => CommandResult::message(msg),
+            Err(e) => CommandResult::message(format!("Failed to enable plugin: {}", e)),
+        }
+    } else if tokens[0] == "disable" {
+        if tokens.len() < 2 {
+            return CommandResult::message("Usage: /plugin disable <name>");
+        }
+        match disable_plugin(tokens[1], &ctx.cwd) {
+            Ok(msg) => CommandResult::message(msg),
+            Err(e) => CommandResult::message(format!("Failed to disable plugin: {}", e)),
+        }
     } else {
-        CommandResult::message("Usage: /plugin [list|enable NAME|disable NAME|install PATH|uninstall NAME]")
+        CommandResult::message("Usage: /plugin [list|install PATH|uninstall NAME|enable NAME|disable NAME]")
     }
 }
 
