@@ -16,5 +16,48 @@ pub mod skill;
 pub mod init;
 pub mod mcp;
 
+// Cron tools
+pub mod cron_create;
+pub mod cron_list;
+pub mod cron_delete;
+pub mod cron_toggle;
+
+// Task management tools
+pub mod task_create;
+pub mod task_list;
+pub mod task_get;
+pub mod task_update;
+pub mod task_stop;
+pub mod task_output;
+
+// Plan mode tools
+pub mod enter_plan_mode;
+pub mod exit_plan_mode;
+
+// Worktree tools
+pub mod enter_worktree;
+pub mod exit_worktree;
+
+// Team tools
+pub mod team_create;
+pub mod team_delete;
+
+// Utility tools
+pub mod sleep;
+pub mod todo_write;
+pub mod config;
+pub mod brief;
+pub mod tool_search;
+pub mod send_message;
+
+// MCP tools
+pub mod mcp_auth;
+pub mod read_mcp_resource;
+pub mod list_mcp_resources;
+pub mod remote_trigger;
+
+// LSP tool
+pub mod lsp;
+
 pub use base::ToolRegistry;
 pub use init::init_tools;

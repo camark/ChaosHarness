@@ -534,3 +534,90 @@ fn cmd_init(args: &str, ctx: &CommandContext) -> CommandResult {
 
     CommandResult::message(results.join("\n\n"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Settings;
+
+    fn create_test_context() -> CommandContext<'static> {
+        let registry = Box::leak(Box::new(CommandRegistry::new()));
+        let settings = Box::leak(Box::new(Settings::default()));
+        CommandContext {
+            cwd: ".".to_string(),
+            settings,
+            registry,
+        }
+    }
+
+    #[test]
+    fn test_cmd_help() {
+        let ctx = create_test_context();
+        let result = cmd_help("", &ctx);
+        assert!(result.message.unwrap().contains("Available commands"));
+    }
+
+    #[test]
+    fn test_cmd_exit() {
+        let ctx = create_test_context();
+        let result = cmd_exit("", &ctx);
+        assert!(result.should_exit);
+    }
+
+    #[test]
+    fn test_cmd_clear() {
+        let ctx = create_test_context();
+        let result = cmd_clear("", &ctx);
+        assert!(result.clear_screen);
+        assert!(result.message.unwrap().contains("cleared"));
+    }
+
+    #[test]
+    fn test_cmd_version() {
+        let ctx = create_test_context();
+        let result = cmd_version("", &ctx);
+        assert!(result.message.unwrap().contains("v0.1.0"));
+    }
+
+    #[test]
+    fn test_cmd_plugin_list() {
+        let ctx = create_test_context();
+        let result = cmd_plugin("list", &ctx);
+        assert!(result.message.unwrap().contains("plugins"));
+    }
+
+    #[test]
+    fn test_cmd_plugin_install_missing_path() {
+        let ctx = create_test_context();
+        let result = cmd_plugin("install", &ctx);
+        assert!(result.message.unwrap().contains("Usage"));
+    }
+
+    #[test]
+    fn test_cmd_hooks() {
+        let ctx = create_test_context();
+        let result = cmd_hooks("", &ctx);
+        assert!(result.message.unwrap().contains("hooks"));
+    }
+
+    #[test]
+    fn test_cmd_config_show() {
+        let ctx = create_test_context();
+        let result = cmd_config("show", &ctx);
+        assert!(result.message.unwrap().contains("Model"));
+    }
+
+    #[test]
+    fn test_cmd_memory_list() {
+        let ctx = create_test_context();
+        let result = cmd_memory("list", &ctx);
+        assert!(result.message.is_some());
+    }
+
+    #[test]
+    fn test_cmd_sessions() {
+        let ctx = create_test_context();
+        let result = cmd_sessions("", &ctx);
+        assert!(result.message.is_some());
+    }
+}

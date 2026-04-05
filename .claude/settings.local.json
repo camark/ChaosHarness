@@ -80,7 +80,8 @@
       "Bash(./target/release/rust_harness --print \"使用 filesystem__read_file 工具读取 README.md 文件的内容\")",
       "Bash(rm:*)",
       "Bash(./target/release/rust_harness --stdio-backend)",
-      "Bash(timeout 5 cat)"
+      "Bash(timeout 5 cat)",
+      "Bash(findstr /i open)"
     ]
   }
 }

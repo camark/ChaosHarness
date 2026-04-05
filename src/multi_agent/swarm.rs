@@ -273,4 +273,54 @@ mod tests {
             AgentRole::Architect
         );
     }
+
+    #[tokio::test]
+    async fn test_swarm_execute() {
+        let config = SwarmConfig {
+            name: "test_execute_swarm".to_string(),
+            required_roles: vec![AgentRole::General],
+            ..Default::default()
+        };
+        let settings = Settings::default();
+        let swarm = Swarm::new(config, settings);
+
+        // Initialize and execute a task
+        swarm.initialize().await.unwrap();
+        let results = swarm.execute("Test task").await;
+
+        assert!(results.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_swarm_pause_resume() {
+        let config = SwarmConfig::default();
+        let settings = Settings::default();
+        let swarm = Swarm::new(config, settings);
+
+        // Set to running first
+        let mut state = swarm.state.lock().await;
+        state.status = SwarmStatus::Running;
+        drop(state);
+
+        swarm.pause().await;
+        assert_eq!(swarm.get_status().await, SwarmStatus::Paused);
+
+        swarm.resume().await;
+        assert_eq!(swarm.get_status().await, SwarmStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn test_swarm_stop() {
+        let config = SwarmConfig::default();
+        let settings = Settings::default();
+        let swarm = Swarm::new(config, settings);
+
+        // Set to running then stop
+        let mut state = swarm.state.lock().await;
+        state.status = SwarmStatus::Running;
+        drop(state);
+
+        swarm.stop().await;
+        assert_eq!(swarm.get_status().await, SwarmStatus::Idle);
+    }
 }
