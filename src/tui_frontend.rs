@@ -1,4 +1,5 @@
 //! Ratatui TUI frontend for Rust Harness
+//! Simple synchronous version for better reliability on Windows
 
 use crossterm::{
     event::{self, KeyCode, KeyEventKind, KeyModifiers},
@@ -8,61 +9,120 @@ use crossterm::{
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph, Clear},
-    Frame,
 };
 use std::{
-    io::{self, Write},
+    io::{self, Write, BufRead, BufReader},
     time::Duration,
+    process::{Command, Stdio, Child, ChildStdin, ChildStdout},
     sync::mpsc::{self, TryRecvError},
     thread,
 };
 
+/// Backend communication
+struct Backend {
+    tx: mpsc::Sender<String>,
+    rx: mpsc::Receiver<String>,
+    _thread: thread::JoinHandle<()>,
+}
+
+impl Backend {
+    fn new() -> Self {
+        let (tx, rx) = mpsc::channel();
+        let (out_tx, out_rx) = mpsc::channel();
+
+        let mut child: Option<Child> = None;
+
+        // Start backend process
+        match Command::new("cargo")
+            .args(["run", "--", "--stdio-backend"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(c) => child = Some(c),
+            Err(e) => eprintln!("Failed to start backend: {}", e),
+        }
+
+        let mut stdin: Option<ChildStdin> = None;
+        let mut stdout: Option<ChildStdout> = None;
+
+        if let Some(ref mut c) = child {
+            stdin = c.stdin.take();
+            stdout = c.stdout.take();
+        }
+
+        // Spawn reader thread
+        let handle = thread::spawn(move || {
+            if let Some(mut stdout) = stdout {
+                let mut reader = BufReader::new(stdout);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            let trimmed = line.trim();
+                            if let Some(json_str) = trimmed.strip_prefix("OHJSON:") {
+                                let _ = out_tx.send(json_str.to_string());
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            // Wait for messages and write to stdin
+            for msg in rx {
+                if let Some(ref mut stdin) = stdin {
+                    let _ = writeln!(stdin, "{}", msg);
+                    let _ = stdin.flush();
+                }
+            }
+        });
+
+        Self {
+            tx,
+            rx: out_rx,
+            _thread: handle,
+        }
+    }
+
+    fn send(&self, msg: &str) {
+        let _ = self.tx.send(msg.to_string());
+    }
+
+    fn recv(&self) -> Result<String, TryRecvError> {
+        self.rx.try_recv()
+    }
+}
+
 /// Terminal UI application
-pub struct TuiApp {
+struct App {
     input: String,
     transcript: Vec<String>,
     busy: bool,
     should_quit: bool,
-    frontend_rx: mpsc::Receiver<String>,
     cursor_visible: bool,
+    cursor_timer: u32,
+    backend: Backend,
 }
 
-impl TuiApp {
-    pub fn new() -> Self {
-        let (_, _) = mpsc::channel::<String>();
-        let (frontend_tx, frontend_rx) = mpsc::channel();
-
-        // Spawn backend reader thread
-        thread::spawn(move || {
-            use std::io::BufRead;
-            let stdin = io::stdin();
-            let mut reader = std::io::BufReader::new(stdin);
-            let mut line = String::new();
-
-            loop {
-                line.clear();
-                if reader.read_line(&mut line).is_ok() {
-                    if line.starts_with("OHJSON:") {
-                        let json_str = line.trim_start_matches("OHJSON:");
-                        if frontend_tx.send(json_str.to_string()).is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
+impl App {
+    fn new() -> Self {
+        let backend = Backend::new();
 
         Self {
             input: String::new(),
             transcript: Vec::new(),
             busy: false,
             should_quit: false,
-            frontend_rx,
             cursor_visible: true,
+            cursor_timer: 0,
+            backend,
         }
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    fn run(&mut self) -> io::Result<()> {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -75,17 +135,17 @@ impl TuiApp {
         loop {
             terminal.draw(|f| self.ui(f))?;
 
-            // Handle backend messages
+            // Handle backend messages (non-blocking)
             loop {
-                match self.frontend_rx.try_recv() {
+                match self.backend.recv() {
                     Ok(msg) => self.process_backend_message(&msg),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => break,
                 }
             }
 
-            // Handle input
-            if event::poll(Duration::from_millis(50))? {
+            // Handle input with timeout
+            if event::poll(Duration::from_millis(100))? {
                 if let event::Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
                         self.handle_key(key.code, key.modifiers);
@@ -97,8 +157,11 @@ impl TuiApp {
                 break;
             }
 
-            // Toggle cursor visibility for blink effect
-            self.cursor_visible = !self.cursor_visible;
+            // Toggle cursor visibility every 5 frames (~500ms)
+            self.cursor_timer = (self.cursor_timer + 1) % 5;
+            if self.cursor_timer == 0 {
+                self.cursor_visible = !self.cursor_visible;
+            }
         }
 
         // Restore terminal
@@ -147,12 +210,9 @@ impl TuiApp {
         self.transcript.push(format!("> {}", line));
 
         // Send to backend
-        let msg = serde_json::json!({
-            "type": "submit_line",
-            "line": line
-        });
-        let _ = writeln!(io::stdout(), "{}", msg);
-        let _ = io::stdout().flush();
+        let msg = format!(r#"{{"type":"submit_line","line":"{}"}}"#,
+            line.replace('\\', "\\\\").replace('"', "\\\""));
+        self.backend.send(&msg);
     }
 
     fn process_backend_message(&mut self, json_str: &str) {
@@ -160,32 +220,36 @@ impl TuiApp {
             if let Some(event_type) = event.get("type").and_then(|v| v.as_str()) {
                 match event_type {
                     "ready" => {
-                        self.transcript.push("[System] Backend ready".to_string());
+                        self.transcript.push("[System] Backend connected".to_string());
                         self.busy = false;
                     }
                     "transcript_item" => {
                         if let Some(item) = event.get("item") {
-                            let role = item.get("role").and_then(|v| v.as_str()).unwrap_or("system");
-                            let text = item.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                            match role {
-                                "user" => self.transcript.push(format!("> {}", text)),
-                                "assistant" => self.transcript.push(format!("AI: {}", text)),
-                                "system" => self.transcript.push(format!("[System] {}", text)),
-                                "tool" => {
-                                    let tool = item.get("tool_name").and_then(|v| v.as_str()).unwrap_or("tool");
-                                    self.transcript.push(format!("[Tool: {}] {}", tool, text));
-                                }
-                                _ => self.transcript.push(text.to_string()),
-                            }
+                            let role = item.get("role")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("system");
+                            let text = item.get("text")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+
+                            let line = match role {
+                                "user" => format!("> {}", text),
+                                "assistant" => format!("AI: {}", text),
+                                "system" => format!("[System] {}", text),
+                                "tool" => format!("[Tool] {}", text),
+                                _ => text.to_string(),
+                            };
+                            self.transcript.push(line);
                         }
                     }
                     "line_complete" => {
                         self.busy = false;
                     }
                     "error" => {
-                        if let Some(msg) = event.get("message").and_then(|v| v.as_str()) {
-                            self.transcript.push(format!("[Error] {}", msg));
-                        }
+                        let message = event.get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown error");
+                        self.transcript.push(format!("[Error] {}", message));
                         self.busy = false;
                     }
                     _ => {}
@@ -204,8 +268,8 @@ impl TuiApp {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(3),
                 Constraint::Min(1),
-                Constraint::Length(1),
                 Constraint::Length(3),
             ])
             .split(area);
@@ -226,7 +290,7 @@ impl TuiApp {
                     Style::default().fg(Color::Green)
                 } else if line.starts_with("[System]") {
                     Style::default().fg(Color::Yellow)
-                } else if line.starts_with("[Tool:") {
+                } else if line.starts_with("[Tool]") {
                     Style::default().fg(Color::Magenta)
                 } else if line.starts_with("[Error]") {
                     Style::default().fg(Color::Red)
@@ -263,11 +327,7 @@ impl TuiApp {
 
         // Input line with cursor
         let cursor = if self.cursor_visible && !self.busy { "█" } else { " " };
-        let input_text = if self.busy {
-            format!("> {}", self.input)
-        } else {
-            format!("> {}{}", self.input, cursor)
-        };
+        let input_text = format!("> {}{}", self.input, cursor);
         let input = Paragraph::new(input_text)
             .style(Style::default().fg(Color::White));
         f.render_widget(input, input_chunks[1]);
@@ -276,6 +336,6 @@ impl TuiApp {
 
 /// Run the TUI frontend
 pub fn run_tui_frontend() -> io::Result<()> {
-    let mut app = TuiApp::new();
+    let mut app = App::new();
     app.run()
 }
