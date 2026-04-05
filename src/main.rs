@@ -9,6 +9,7 @@ mod engine;
 mod hooks;
 mod mcp;
 mod memory;
+mod multi_agent;
 mod permissions;
 mod plugins;
 mod prompts;
@@ -118,6 +119,10 @@ pub struct Args {
     /// Run the structured backend host for the React terminal UI
     #[arg(long, hide = true)]
     backend_only: bool,
+
+    /// Run stdio backend for React terminal UI (OHJSON protocol)
+    #[arg(long, hide = true)]
+    stdio_backend: bool,
 }
 
 #[tokio::main]
@@ -136,12 +141,25 @@ async fn main() -> Result<()> {
     let settings = config::load_settings(args.settings.as_deref())
         .map_err(|e| anyhow::anyhow!("Failed to load settings: {}", e))?;
 
-    // Handle --backend-only mode
+    // Handle --backend-only mode (WebSocket)
     if args.backend_only {
         let port = 3000; // Default backend port
         return services::backend_server::run_backend_server(settings, port)
             .await
             .map_err(|e| anyhow::anyhow!("Backend server error: {}", e));
+    }
+
+    // Handle --stdio-backend mode (OHJSON protocol)
+    if args.stdio_backend {
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
+        return tokio::select! {
+            result = services::stdio_backend::run_stdio_backend(settings, shutdown_tx.clone()) => {
+                result.map_err(|e| anyhow::anyhow!("Stdio backend error: {}", e))
+            }
+            _ = shutdown_rx.recv() => {
+                Ok(()) // Clean shutdown
+            }
+        };
     }
 
     // Handle --continue and --resume flags
