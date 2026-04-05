@@ -1561,6 +1561,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "glob",
+ "lazy_static",
  "mockito",
  "parking_lot",
  "rand 0.8.5",

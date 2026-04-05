@@ -34,6 +34,14 @@ impl CommandResult {
             clear_screen: true,
         }
     }
+
+    pub fn error(msg: impl Into<String>) -> Self {
+        Self {
+            message: Some(format!("Error: {}", msg.into())),
+            should_exit: false,
+            clear_screen: false,
+        }
+    }
 }
 
 /// Context available to command handlers

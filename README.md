@@ -69,22 +69,62 @@ cargo run -- --backend-only
 # npm start
 ```
 
-## Frontend Integration
+## Usage
 
-The original React/Ink terminal frontend (`C:\Opt\OpenHarness\frontend\terminal`) can be reused with the Rust backend:
+### Quick Start (Recommended)
 
-1. Start the Rust backend:
-   ```bash
-   cargo run -- --backend-only
-   ```
+Use the launcher script to choose between modes:
 
-2. Start the React frontend in another terminal:
-   ```bash
-   cd C:\Opt\OpenHarness\frontend\terminal
-   npm start
-   ```
+**On Windows:**
+```bash
+launch.bat
+```
 
-The backend runs a WebSocket server on `http://127.0.0.1:3000/ws` that communicates with the React frontend using the same protocol as the Python backend.
+**On Linux/macOS:**
+```bash
+chmod +x launch.sh
+./launch.sh
+```
+
+The launcher provides 3 options:
+1. **REPL** - Interactive CLI mode
+2. **Frontend** - React TUI mode (requires TTY support)
+3. **Backend Only** - WebSocket server mode
+
+### Manual Start
+
+**REPL Mode (CLI):**
+```bash
+cargo run -- <your prompt>
+```
+
+**Frontend Mode (React TUI):**
+
+On Windows (requires Windows Terminal for TTY support):
+```bash
+cd frontend
+start.bat
+```
+
+On Linux/macOS:
+```bash
+cd frontend
+./start.sh
+```
+
+**Note:** The frontend requires TTY support. If you see "Raw mode is not supported" error:
+- On Windows: Run in Windows Terminal (`wt.exe`) or CMD, not Git Bash
+- On Linux/macOS: Run in a native terminal, not inside VS Code terminal
+
+**Backend Only Mode (WebSocket server):**
+```bash
+cargo run -- --backend-only
+```
+
+**Backend Only Mode (Stdio/OHJSON protocol):**
+```bash
+cargo run -- --stdio-backend
+```
 
 ## Configuration
 

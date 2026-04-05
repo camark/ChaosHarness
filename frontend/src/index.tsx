@@ -32,16 +32,7 @@ try {
 	console.error('Using default config:', config);
 }
 
-// Check if TTY is supported
-const isTTY = process.stdin.isTTY ?? false;
-
-if (!isTTY) {
-	console.warn('Warning: stdin is not a TTY. Ink TUI may not work correctly.');
-	console.warn('Try running in Windows Terminal (wt.exe) or CMD instead of Git Bash.');
-	console.warn('');
-}
-
 render(<App config={config} />, {
-	patchConsole: false,
-	exitOnCtrlC: true,
+	patchConsole: true,
+	exitOnCtrlC: false,
 });

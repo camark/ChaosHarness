@@ -229,12 +229,20 @@ pub fn save_settings(settings: &Settings, config_path: Option<&str>) -> Result<(
 }
 
 fn apply_env_overrides(settings: &mut Settings) {
-    if let Ok(model) = env::var("ANTHROPIC_MODEL").or_else(|_| env::var("RUST_HARNESS_MODEL")) {
-        settings.model = model;
+    // Environment variables only override if settings.json values are empty/unset
+    // This gives priority to settings.json configuration
+
+    if settings.model.is_empty() || settings.model == default_model() {
+        if let Ok(model) = env::var("ANTHROPIC_MODEL").or_else(|_| env::var("RUST_HARNESS_MODEL")) {
+            settings.model = model;
+        }
     }
 
-    if let Ok(base_url) = env::var("ANTHROPIC_BASE_URL").or_else(|_| env::var("RUST_HARNESS_BASE_URL")) {
-        settings.base_url = Some(base_url);
+    // Only use env override if settings.json base_url is None or empty
+    if settings.base_url.is_none() || settings.base_url.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+        if let Ok(base_url) = env::var("ANTHROPIC_BASE_URL").or_else(|_| env::var("RUST_HARNESS_BASE_URL")) {
+            settings.base_url = Some(base_url);
+        }
     }
 
     if let Ok(max_tokens) = env::var("RUST_HARNESS_MAX_TOKENS") {
@@ -243,11 +251,17 @@ fn apply_env_overrides(settings: &mut Settings) {
         }
     }
 
-    if let Ok(api_key) = env::var("ANTHROPIC_API_KEY").or_else(|_| env::var("OPENAI_API_KEY")) {
-        settings.api_key = api_key;
+    // Only use env API key if settings.json api_key is empty
+    if settings.api_key.is_empty() {
+        if let Ok(api_key) = env::var("ANTHROPIC_API_KEY").or_else(|_| env::var("OPENAI_API_KEY")) {
+            settings.api_key = api_key;
+        }
     }
 
-    if let Ok(api_format) = env::var("RUST_HARNESS_API_FORMAT") {
-        settings.api_format = api_format;
+    // Only use env api_format if settings.json has default value
+    if settings.api_format == default_api_format() {
+        if let Ok(api_format) = env::var("RUST_HARNESS_API_FORMAT") {
+            settings.api_format = api_format;
+        }
     }
 }

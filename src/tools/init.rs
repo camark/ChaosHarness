@@ -11,12 +11,14 @@ use crate::tools::web_fetch::WebFetchTool;
 use crate::tools::web_search::WebSearchTool;
 use crate::tools::notebook_edit::NotebookEditTool;
 use crate::tools::ask_user::AskUserTool;
+use crate::tools::directory_tree::DirectoryTreeTool;
+use std::env;
 
 /// Initialize all available tools
 pub async fn init_tools() -> ToolRegistry {
     let registry = ToolRegistry::new();
 
-    // Register Phase 1 tools
+    // Register all tools
     registry.register(BashTool).await;
     registry.register(FileReadTool).await;
     registry.register(FileWriteTool).await;
@@ -27,6 +29,7 @@ pub async fn init_tools() -> ToolRegistry {
     registry.register(WebSearchTool).await;
     registry.register(NotebookEditTool).await;
     registry.register(AskUserTool::new(None)).await;
+    registry.register(DirectoryTreeTool::new(env::current_dir().unwrap_or_default())).await;
 
     registry
 }

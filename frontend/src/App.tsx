@@ -146,9 +146,9 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 		return false;
 	};
 
-	useInput((chunk, key) => {
+	useInput((input, key) => {
 		// Ctrl+C → exit
-		if (key.ctrl && chunk === 'c') {
+		if (key.ctrl && input === 'c') {
 			session.sendRequest({type: 'shutdown'});
 			exit();
 			return;
@@ -176,7 +176,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				return;
 			}
 			// Number keys for quick selection
-			const num = parseInt(chunk, 10);
+			const num = parseInt(input, 10);
 			if (num >= 1 && num <= selectModal.options.length) {
 				const selected = selectModal.options[num - 1];
 				if (selected) {
@@ -189,7 +189,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 
 		// --- Permission modal ---
 		if (session.modal?.kind === 'permission') {
-			if (chunk.toLowerCase() === 'y') {
+			if (input.toLowerCase() === 'y') {
 				session.sendRequest({
 					type: 'permission_response',
 					request_id: session.modal.request_id,
@@ -198,7 +198,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				session.setModal(null);
 				return;
 			}
-			if (chunk.toLowerCase() === 'n' || key.escape) {
+			if (input.toLowerCase() === 'n' || key.escape) {
 				session.sendRequest({
 					type: 'permission_response',
 					request_id: session.modal.request_id,
@@ -223,11 +223,11 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				return;
 			}
 			// Handle text input for question modal
-			if (chunk && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow) {
+			if (input && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow) {
 				if (key.backspace) {
 					setModalInput(modalInput.slice(0, -1));
 				} else {
-					setModalInput(modalInput + chunk);
+					setModalInput(modalInput + input);
 				}
 			}
 			return;
@@ -270,8 +270,8 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				return;
 			}
 			// Still allow typing to complete command
-			if (chunk && !key.ctrl && !key.meta) {
-				setInput(input + chunk);
+			if (input && !key.ctrl && !key.meta) {
+				setInput(prev => prev + input);
 			}
 			return;
 		}
@@ -302,7 +302,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 
 		// --- Handle Backspace ---
 		if (key.backspace) {
-			setInput(input.slice(0, -1));
+			setInput(prev => prev.slice(0, -1));
 			return;
 		}
 
@@ -313,8 +313,8 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 		}
 
 		// --- Handle regular character input ---
-		if (chunk && !key.ctrl && !key.meta && !key.tab) {
-			setInput(input + chunk);
+		if (input && !key.ctrl && !key.meta && !key.tab) {
+			setInput(prev => prev + input);
 		}
 	});
 

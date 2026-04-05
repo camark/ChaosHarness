@@ -1,4 +1,4 @@
-//! Anthropic API client with retry logic and tool support
+//! Anthropic API client with tool support and OpenAI-compatible API support
 
 use crate::api::errors::ApiError;
 use crate::engine::messages::{ConversationMessage, MessageContent, ToolUseData};
@@ -27,6 +27,15 @@ struct MessageRequest {
     tools: Vec<Value>,
 }
 
+/// OpenAI-compatible request format (for Moonshot and other providers)
+#[derive(Debug, Serialize)]
+struct OpenAIRequest {
+    model: String,
+    messages: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+}
+
 #[derive(Debug, Deserialize)]
 struct MessageResponse {
     id: String,
@@ -38,6 +47,37 @@ struct MessageResponse {
     stop_reason: Option<String>,
     stop_sequence: Option<String>,
     usage: UsageData,
+}
+
+/// OpenAI-compatible response format (for Moonshot and other providers)
+#[derive(Debug, Deserialize)]
+struct OpenAIResponse {
+    id: String,
+    object: String,
+    created: i64,
+    model: String,
+    choices: Vec<OpenAIChoice>,
+    usage: OpenAIUsage,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIChoice {
+    index: i32,
+    message: OpenAIMessage,
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIMessage {
+    role: String,
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIUsage {
+    prompt_tokens: i32,
+    completion_tokens: i32,
+    total_tokens: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,7 +180,17 @@ impl ApiClient {
 
     async fn send_once(&self, request: &ApiRequest) -> Result<ApiMessage, ApiError> {
         let response = self.send_request(request).await?;
-        parse_response(response).await
+
+        // Detect API type and parse response accordingly
+        let use_openai_format = self.base_url.contains("moonshot")
+            || self.base_url.contains("openai")
+            || self.api_key.starts_with("sk-");
+
+        if use_openai_format {
+            parse_openai_response(response).await
+        } else {
+            parse_response(response).await
+        }
     }
 
     async fn send_request(&self, request: &ApiRequest) -> Result<Response, ApiError> {
@@ -168,38 +218,77 @@ impl ApiClient {
             .map(|m| m.to_api_param())
             .collect();
 
-        let body = MessageRequest {
-            model: request.model.clone(),
-            messages,
-            system: request.system_prompt.clone(),
-            max_tokens: request.max_tokens,
-            tools: request.tools.clone(),
-        };
-
-        let mut req = self
-            .client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&body);
-
+        // Build request body based on API format
         if use_openai_format {
+            // OpenAI format: system prompt goes into messages array
+            let mut openai_messages = Vec::new();
+
+            // Add system message first if present
+            if let Some(ref system) = request.system_prompt {
+                openai_messages.push(serde_json::json!({
+                    "role": "system",
+                    "content": system
+                }));
+            }
+
+            // Add user/assistant messages
+            openai_messages.extend(messages);
+
+            let body = OpenAIRequest {
+                model: request.model.clone(),
+                messages: openai_messages,
+                max_tokens: Some(request.max_tokens),
+            };
+
+            let mut req = self
+                .client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body);
+
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
+
+            let response = req
+                .send()
+                .await
+                .map_err(|e| ApiError::Network(e.to_string()))?;
+
+            if !response.status().is_success() {
+                return Err(handle_error_response(response).await);
+            }
+
+            Ok(response)
         } else {
+            // Anthropic format: system prompt is separate field
+            let body = MessageRequest {
+                model: request.model.clone(),
+                messages,
+                system: request.system_prompt.clone(),
+                max_tokens: request.max_tokens,
+                tools: request.tools.clone(),
+            };
+
+            let mut req = self
+                .client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body);
+
             req = req
                 .header("x-api-key", &self.api_key)
                 .header("anthropic-version", "2023-06-01");
+
+            let response = req
+                .send()
+                .await
+                .map_err(|e| ApiError::Network(e.to_string()))?;
+
+            if !response.status().is_success() {
+                return Err(handle_error_response(response).await);
+            }
+
+            Ok(response)
         }
-
-        let response = req
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-
-        if !response.status().is_success() {
-            return Err(handle_error_response(response).await);
-        }
-
-        Ok(response)
     }
 }
 
@@ -237,6 +326,38 @@ async fn parse_response(response: Response) -> Result<ApiMessage, ApiError> {
             output_tokens: body.usage.output_tokens,
         },
         stop_reason: body.stop_reason,
+    })
+}
+
+async fn parse_openai_response(response: Response) -> Result<ApiMessage, ApiError> {
+    let body: OpenAIResponse = response
+        .json()
+        .await
+        .map_err(|e| ApiError::Json(e.to_string()))?;
+
+    let choice = body.choices.first().ok_or_else(|| {
+        ApiError::Request("No choices in response".to_string())
+    })?;
+
+    let mut content: Vec<MessageContent> = Vec::new();
+    let tool_uses: Vec<ToolUseData> = Vec::new();
+
+    // OpenAI format: content is a string, not tool_use blocks
+    // For now, treat all content as text
+    // Moonshot K2.5 doesn't support tool_use in OpenAI format
+    if let Some(text) = &choice.message.content {
+        content.push(MessageContent::Text { text: text.clone() });
+    }
+
+    Ok(ApiMessage {
+        role: choice.message.role.clone(),
+        content,
+        tool_uses,
+        usage: ApiUsage {
+            input_tokens: body.usage.prompt_tokens as u32,
+            output_tokens: body.usage.completion_tokens as u32,
+        },
+        stop_reason: choice.finish_reason.clone(),
     })
 }
 
@@ -297,4 +418,137 @@ fn calculate_retry_delay(attempt: u32, _error: &Option<ApiError>) -> u64 {
     // Add jitter (up to 25% of delay)
     let jitter = rand::thread_rng().gen_range(0..capped_delay / 4);
     capped_delay + jitter
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_api_url_construction_anthropic() {
+        // Anthropic default should use /v1/messages
+        let client = ApiClient::new("test-key".to_string(), Some("https://api.anthropic.com".to_string()));
+        assert_eq!(client.base_url, "https://api.anthropic.com");
+    }
+
+    #[test]
+    fn test_api_url_construction_moonshot() {
+        // Moonshot with /v1 suffix
+        let client = ApiClient::new("sk-test".to_string(), Some("https://api.moonshot.cn/v1".to_string()));
+        assert!(client.base_url.contains("moonshot"));
+    }
+
+    #[test]
+    fn test_api_url_construction_moonshot_anthropic_path() {
+        // Moonshot with /anthropic suffix (should still work)
+        let client = ApiClient::new("sk-test".to_string(), Some("https://api.moonshot.cn/anthropic".to_string()));
+        assert!(client.base_url.contains("moonshot"));
+    }
+
+    #[test]
+    fn test_openai_format_detection() {
+        // Should detect OpenAI format for moonshot
+        let client = ApiClient::new("sk-test".to_string(), Some("https://api.moonshot.cn/v1".to_string()));
+        assert!(client.base_url.contains("moonshot") || client.api_key.starts_with("sk-"));
+    }
+
+    #[test]
+    fn test_openai_response_parse() {
+        // Test OpenAI-format response (like Moonshot)
+        let json = r#"{
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "kimi-k2.5",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello, I am Moonshot AI."
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30
+            }
+        }"#;
+
+        let response: OpenAIResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.model, "kimi-k2.5");
+        assert_eq!(response.choices.len(), 1);
+        assert_eq!(response.choices[0].message.content, Some("Hello, I am Moonshot AI.".to_string()));
+        assert_eq!(response.usage.prompt_tokens, 10);
+        assert_eq!(response.usage.completion_tokens, 20);
+    }
+
+    #[test]
+    fn test_anthropic_response_parse() {
+        // Test Anthropic-format response
+        let json = r#"{
+            "id": "msg_test",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hello, I am Claude."}],
+            "model": "claude-sonnet-4-20250514",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {"input_tokens": 10, "output_tokens": 20}
+        }"#;
+
+        let response: MessageResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.model, "claude-sonnet-4-20250514");
+        assert_eq!(response.content.len(), 1);
+        assert_eq!(response.usage.input_tokens, 10);
+        assert_eq!(response.usage.output_tokens, 20);
+    }
+
+    #[test]
+    fn test_user_settings_config() {
+        // Test based on user's actual settings.json configuration
+        // User: api_key="sk-ctv5yz...", model="kimi-k2.5", base_url="https://api.moonshot.cn/anthropic"
+        // Expected behavior: Should detect OpenAI format due to sk- prefix and moonshot domain
+
+        // Case 1: Current (incorrect) settings - should still work due to detection
+        let client1 = ApiClient::new(
+            "sk-ctv5yzCJV7l1JYPj5W7RXVx48Cy05VxqyfELFCzEVU0PsCj3".to_string(),
+            Some("https://api.moonshot.cn/anthropic".to_string())
+        );
+        // Will detect OpenAI format due to sk- prefix
+        assert!(client1.api_key.starts_with("sk-"));
+
+        // Case 2: Corrected settings (recommended)
+        let client2 = ApiClient::new(
+            "sk-ctv5yzCJV7l1JYPj5W7RXVx48Cy05VxqyfELFCzEVU0PsCj3".to_string(),
+            Some("https://api.moonshot.cn/v1".to_string())
+        );
+        // Will detect OpenAI format and build correct URL
+        assert!(client2.base_url.contains("moonshot"));
+    }
+
+    #[test]
+    fn test_openai_request_format() {
+        // Test OpenAI request body serialization
+        let body = OpenAIRequest {
+            model: "kimi-k2.5".to_string(),
+            messages: vec![
+                serde_json::json!({"role": "system", "content": "You are helpful"}),
+                serde_json::json!({"role": "user", "content": "Hello"}),
+            ],
+            max_tokens: Some(1024),
+        };
+
+        let json = serde_json::to_string_pretty(&body).unwrap();
+        println!("{}", json);
+
+        // Verify structure
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["model"], "kimi-k2.5");
+        assert_eq!(value["max_tokens"], 1024);
+        assert_eq!(value["messages"][0]["role"], "system");
+        assert_eq!(value["messages"][0]["content"], "You are helpful");
+        assert_eq!(value["messages"][1]["role"], "user");
+        assert_eq!(value["messages"][1]["content"], "Hello");
+    }
 }

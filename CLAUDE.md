@@ -9,21 +9,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
+# Use launcher (recommended)
+launch.bat       # Windows
+./launch.sh      # Linux/macOS
+
 # Build
 cargo build
 cargo build --release
 
-# Run interactive REPL
+# REPL mode (CLI)
 cargo run -- <your prompt>
 
-# Non-interactive mode (print response and exit)
-cargo run -- -p "Explain this codebase"
+# Frontend mode (React TUI with OHJSON protocol)
+cargo run -- --stdio-backend
+# Then in another terminal:
+cd frontend && npm start
 
-# Backend-only mode (for React TUI frontend)
+# Backend-only mode (WebSocket server)
 cargo run -- --backend-only
-
-# With custom model
-cargo run -- -m claude-sonnet-4-20250514 "Review my code"
 
 # Continue previous session
 cargo run -- -c
@@ -56,6 +59,7 @@ cargo fmt
 | `--permission-mode` | Permission mode: `default`, `plan`, `full_auto` |
 | `--bare` | Minimal mode: skip hooks, plugins, MCP |
 | `--backend-only` | Run WebSocket server for React TUI |
+| `--stdio-backend` | Run stdio backend with OHJSON protocol |
 
 ## Environment Variables
 
@@ -93,12 +97,18 @@ src/
 │   ├── modes.rs         # PermissionMode enum (Default/Plan/FullAuto)
 │   └── checker.rs       # PermissionChecker with path rules, command denies
 ├── hooks/               # Extensible event system
-│   ├── events.rs        # HookEvent enum (PreToolUse, PostToolUse, OnError, OnTurnComplete)
+│   ├── events.rs        # HookEvent enum (PreToolUse, PostToolUse, OnError, OnTurnComplete, OnMessageSent, OnResponseReceived, OnSessionStart, OnSessionEnd)
 │   ├── executor.rs      # HookExecutor - runs hooks with timeout, collects output
 │   ├── mod.rs           # Module exports
 │   ├── registry.rs      # HookRegistry - manages hooks by event type (sync with parking_lot)
 │   ├── schemas.rs       # HookDefinition - hook configuration (name, event, command, timeout)
-│   └── types.rs         # HookContext, HookResult, HookDecision types
+│   ├── types.rs         # HookContext, HookResult, HookDecision types
+│   └── builtins.rs      # Built-in hooks: security scanner, code reviewer, tool logger
+├── multi_agent/         # Multi-agent coordination system
+│   ├── agent.rs         # Agent roles, state, and execution
+│   ├── coordinator.rs   # Coordinator with broadcast channel
+│   ├── messages.rs      # AgentMessage, MessageType, Task types
+│   └── swarm.rs         # Swarm with collaboration modes (Sequential, Parallel, Democratic, Hierarchical)
 ├── mcp/                 # Model Context Protocol
 │   ├── client.rs        # MCP client
 │   ├── config.rs        # MCP server config loading
@@ -151,7 +161,7 @@ src/
 
 2. **Message Flow**: User input → `QueryEngine::send_message()` → `ApiClient::send_message()` → parse response with tool_uses → execute tools in parallel → append tool results → loop until model stops requesting tools.
 
-3. **Tool System**: 10 core tools implemented in `tools/` module:
+3. **Tool System**: 11 core tools implemented in `tools/` module:
    - `bash` - Shell command execution with timeout
    - `read_file` - Read UTF-8 text files with line numbers (offset/limit support)
    - `write_file` - Create or overwrite files with auto-directory creation
@@ -162,13 +172,15 @@ src/
    - `web_search` - Web search via DuckDuckGo HTML
    - `notebook_edit` - Edit Jupyter notebook cells (replace/insert/delete)
    - `ask_user` - Interactive user prompts
+   - `directory_tree` - List directory structure as tree (max_depth, pattern, include_hidden options)
 
 4. **Auto-Compaction**: `engine::compact` module provides automatic message history compaction when token count exceeds threshold (50k tokens or 50 messages). Truncates old tool results and keeps only recent messages.
 
 5. **Hooks System**: `hooks` module provides extensible event handling:
    - `HookRegistry` - manages hooks by event type, uses `parking_lot::RwLock` for sync access
    - `HookExecutor` - executes hooks with timeout, collects output, handles blocking decisions
-   - Events: `PreToolUse` (can block), `PostToolUse`, `OnError`, `OnTurnComplete`
+   - Events (8 total): `PreToolUse` (can block), `PostToolUse`, `OnError`, `OnTurnComplete`, `OnMessageSent`, `OnResponseReceived`, `OnSessionStart`, `OnSessionEnd`
+   - Built-in hooks: security scanner (blocks dangerous commands like `rm -rf /`, sudo, `curl|sh`), code reviewer (language-specific suggestions), tool logger (audit trail)
    - Hooks configured in `settings.json` with `hooks.hooks` array
    - Each hook: `{ name, event, command, timeout, blocking, cwd }`
    - Blocking hooks: non-empty stdout = block operation
@@ -207,21 +219,22 @@ When implementing missing features, reference the OpenHarness Python implementat
 - ✅ Query engine with tool-use loop
 - ✅ Tool registry and execution framework
 - ✅ Permission checker integration
-- ✅ 10 core tools with tests (30 passing tests):
-  - Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, NotebookEdit, AskUser
+- ✅ 11 core tools with tests (61 passing tests)
 - ✅ Auto-compaction for long conversations (50k tokens / 50 messages threshold)
 - ✅ Token usage tracking
 - ✅ Stream events module (structure ready)
 - ✅ Basic REPL with rustyline
-- ✅ WebSocket backend server
+- ✅ WebSocket backend server (axum, multi-session support)
 - ✅ Configuration system with env overrides
 - ✅ Permission modes (Default/Plan/FullAuto)
-- ✅ Hooks system with PreToolUse/PostToolUse/OnError/OnTurnComplete events
-- ✅ Slash commands system (12 commands: /help, /exit, /clear, /version, /status, /usage, /skills, /plugin, /hooks, /config, /memory, /resume)
+- ✅ Hooks system with 8 events and built-in hooks (security scanner, code reviewer, tool logger)
+- ✅ Slash commands system (16 commands)
 - ✅ Skills loader from ~/.rust_harness/skills/
 - ✅ Plugin loader (claude-code compatible)
 - ✅ Memory manager with MEMORY.md persistence
 - ✅ Session storage and resume functionality
+- ✅ Multi-agent coordination system (Agent, Coordinator, Swarm with 4 collaboration modes)
+- ✅ MCP client with STDIO/SSE transport support
 
 ## Code Style
 

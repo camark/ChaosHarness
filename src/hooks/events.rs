@@ -18,6 +18,14 @@ pub enum HookEvent {
     OnError,
     /// When a turn completes successfully
     OnTurnComplete,
+    /// When a message is sent by the user
+    OnMessageSent,
+    /// When a response is received from the AI
+    OnResponseReceived,
+    /// When session starts
+    OnSessionStart,
+    /// When session ends
+    OnSessionEnd,
 }
 
 impl HookEvent {
@@ -29,6 +37,10 @@ impl HookEvent {
             HookEvent::PostModelRequest => "post_model_request",
             HookEvent::OnError => "on_error",
             HookEvent::OnTurnComplete => "on_turn_complete",
+            HookEvent::OnMessageSent => "on_message_sent",
+            HookEvent::OnResponseReceived => "on_response_received",
+            HookEvent::OnSessionStart => "on_session_start",
+            HookEvent::OnSessionEnd => "on_session_end",
         }
     }
 
@@ -40,6 +52,10 @@ impl HookEvent {
             "post_model_request" => Some(HookEvent::PostModelRequest),
             "on_error" => Some(HookEvent::OnError),
             "on_turn_complete" => Some(HookEvent::OnTurnComplete),
+            "on_message_sent" => Some(HookEvent::OnMessageSent),
+            "on_response_received" => Some(HookEvent::OnResponseReceived),
+            "on_session_start" => Some(HookEvent::OnSessionStart),
+            "on_session_end" => Some(HookEvent::OnSessionEnd),
             _ => None,
         }
     }

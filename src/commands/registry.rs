@@ -128,6 +128,24 @@ pub fn create_default_command_registry() -> CommandRegistry {
     });
 
     registry.register(SlashCommand {
+        name: "sessions",
+        description: "List all saved sessions",
+        handler: cmd_sessions,
+    });
+
+    registry.register(SlashCommand {
+        name: "export",
+        description: "Export current session to markdown",
+        handler: cmd_export_session,
+    });
+
+    registry.register(SlashCommand {
+        name: "delete_session",
+        description: "Delete a session by ID",
+        handler: cmd_delete_session,
+    });
+
+    registry.register(SlashCommand {
         name: "init",
         description: "Initialize default configuration and project structure",
         handler: cmd_init,
@@ -373,6 +391,78 @@ fn cmd_resume(args: &str, ctx: &CommandContext) -> CommandResult {
         lines.push(String::new());
         lines.push("Use /resume <session_id> to restore a specific session.".to_string());
         CommandResult::message(lines.join("\n"))
+    }
+}
+
+fn cmd_sessions(_args: &str, ctx: &CommandContext) -> CommandResult {
+    use crate::services::session_storage::list_session_snapshots;
+
+    let sessions = list_session_snapshots(&ctx.cwd, 20);
+
+    if sessions.is_empty() {
+        return CommandResult::message("No saved sessions found for this project.");
+    }
+
+    let mut lines = vec![format!("Saved sessions ({} total):", sessions.len())];
+    for s in &sessions {
+        let ts = s.created_at.format("%Y-%m-%d %H:%M");
+        let summary = if s.summary.is_empty() {
+            "(no summary)".to_string()
+        } else {
+            s.summary.chars().take(40).collect::<String>()
+        };
+        lines.push(format!(
+            "  {}  {}  {} messages  {}",
+            s.session_id, ts, s.message_count, summary
+        ));
+    }
+    lines.push(String::new());
+    lines.push("Commands:".to_string());
+    lines.push("  /resume <session_id>  - Load a specific session".to_string());
+    lines.push("  /export               - Export current session to markdown".to_string());
+    lines.push("  /delete_session <id>  - Delete a session".to_string());
+
+    CommandResult::message(lines.join("\n"))
+}
+
+fn cmd_export_session(_args: &str, ctx: &CommandContext) -> CommandResult {
+    use crate::services::session_storage::{export_session_markdown, load_session_snapshot};
+    use crate::engine::query::QueryEngine;
+
+    // Try to load current session
+    match load_session_snapshot(&ctx.cwd) {
+        Some(snapshot) => {
+            match export_session_markdown(&ctx.cwd, &snapshot.messages) {
+                Ok(path) => {
+                    CommandResult::message(format!("Session exported to: {}", path.display()))
+                }
+                Err(e) => CommandResult::error(format!("Failed to export session: {}", e)),
+            }
+        }
+        None => {
+            CommandResult::message("No active session to export. Start a conversation first.")
+        }
+    }
+}
+
+fn cmd_delete_session(args: &str, ctx: &CommandContext) -> CommandResult {
+    use std::fs;
+
+    let session_id = args.trim();
+    if session_id.is_empty() {
+        return CommandResult::error("Usage: /delete_session <session_id>");
+    }
+
+    let session_path = crate::services::session_storage::get_project_session_dir(&ctx.cwd)
+        .join(format!("{}.json", session_id));
+
+    if !session_path.exists() {
+        return CommandResult::message(format!("Session not found: {}", session_id));
+    }
+
+    match fs::remove_file(&session_path) {
+        Ok(_) => CommandResult::message(format!("Session {} deleted.", session_id)),
+        Err(e) => CommandResult::error(format!("Failed to delete session: {}", e)),
     }
 }
 

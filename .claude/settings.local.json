@@ -10,7 +10,32 @@
       "Bash(git commit:*)",
       "Bash(taskkill /F /IM rust_harness.exe)",
       "Bash(cargo clean:*)",
-      "Bash(taskkill //IM rust_harness.exe //F)"
+      "Bash(taskkill //IM rust_harness.exe //F)",
+      "Bash(bash /tmp/test_settings.sh)",
+      "Bash(cargo run:*)",
+      "Bash(cp:*)",
+      "Bash(npm install:*)",
+      "Bash(npm start:*)",
+      "Bash(timeout 8 node --experimental-strip-types src/index.tsx)",
+      "Bash(tsx src/index.tsx)",
+      "Bash(npx tsx:*)",
+      "Bash(cmd:*)",
+      "Read(//d C:/git/RustHarness/**)",
+      "Bash(wt -w 0 nt -p \"Command Prompt\" cmd /c \"npx tsx src/index.tsx\")",
+      "Bash(wt:*)",
+      "Bash(test-communication.bat)",
+      "Bash(timeout 3 cat -)",
+      "Bash(node test-backend.cjs)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git checkout:*)",
+      "Bash(timeout 20 env OPENHARNESS_FRONTEND_SCRIPT='[\"hello test\"]' OPENHARNESS_FRONTEND_RAW_RETURN=1 npx tsx src/index.tsx)",
+      "Bash(ls -la /c/git/RustHarness/frontend/src/*.tsx /c/git/RustHarness/frontend/src/components/*.tsx /c/git/RustHarness/frontend/src/hooks/*.ts)",
+      "Bash(timeout 10 node:*)",
+      "Bash(ls -la /c/git/RustHarness/frontend/test*)",
+      "Bash(ls -la /c/git/RustHarness/test*)",
+      "Bash(timeout 15 env OPENHARNESS_FRONTEND_SCRIPT='[\"test\"]' OPENHARNESS_FRONTEND_RAW_RETURN=1 npx tsx src/index.tsx)",
+      "Bash(start.bat:*)"
     ]
   }
 }

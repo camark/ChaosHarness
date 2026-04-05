@@ -11,6 +11,7 @@ pub mod web_fetch;
 pub mod web_search;
 pub mod notebook_edit;
 pub mod ask_user;
+pub mod directory_tree;
 pub mod init;
 
 pub use base::ToolRegistry;

@@ -68,6 +68,9 @@ sha2 = "0.10"
 # Random for jitter
 rand = "0.8"
 
+# Static variables
+lazy_static = "1.4"
+
 # HTTP client (reqwest is blocking, need non-blocking too)
 bytes = "1.5"
 
