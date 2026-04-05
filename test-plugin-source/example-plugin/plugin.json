@@ -1,0 +1,9 @@
+{
+  "name": "example-plugin",
+  "version": "1.0.0",
+  "description": "An example plugin for testing installation",
+  "enabled": true,
+  "main": "index.js",
+  "author": "Test Author",
+  "license": "MIT"
+}

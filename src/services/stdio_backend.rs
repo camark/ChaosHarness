@@ -392,21 +392,74 @@ impl StdioBackend {
                 });
             }
             cmd if cmd.starts_with("/plugin") => {
-                // Handle /plugin list command
                 use crate::plugins::loader::load_plugins;
-                let plugins = load_plugins(&self.settings, &self.cwd);
-                let message = if plugins.is_empty() {
-                    "No plugins discovered.".to_string()
-                } else {
-                    let lines: Vec<_> = plugins
-                        .iter()
-                        .map(|p| {
-                            let status = if p.enabled { "✓" } else { "✗" };
-                            format!("  [{}] {} v{} - {}", status, p.name, p.version, p.description.as_deref().unwrap_or(""))
-                        })
-                        .collect();
-                    format!("Installed plugins:\n{}", lines.join("\n"))
+                use crate::plugins::installer::{install_plugin_from_path, uninstall_plugin, enable_plugin, disable_plugin};
+
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                let subcommand = parts.get(1).map(|s| *s).unwrap_or("list");
+                let arg = parts.get(2).map(|s| *s);
+
+                let message = match subcommand {
+                    "list" => {
+                        let plugins = load_plugins(&self.settings, &self.cwd);
+                        if plugins.is_empty() {
+                            "No plugins discovered.".to_string()
+                        } else {
+                            let lines: Vec<_> = plugins
+                                .iter()
+                                .map(|p| {
+                                    let status = if p.enabled { "✓" } else { "✗" };
+                                    format!("  [{}] {} v{} - {}", status, p.name, p.version, p.description.as_deref().unwrap_or(""))
+                                })
+                                .collect();
+                            format!("Installed plugins:\n{}", lines.join("\n"))
+                        }
+                    }
+                    "install" => {
+                        if let Some(path) = arg {
+                            match install_plugin_from_path(path, &self.cwd) {
+                                Ok(msg) => msg,
+                                Err(e) => format!("Failed to install: {}", e),
+                            }
+                        } else {
+                            "Usage: /plugin install <path>".to_string()
+                        }
+                    }
+                    "uninstall" => {
+                        if let Some(name) = arg {
+                            match uninstall_plugin(name, &self.cwd) {
+                                Ok(msg) => msg,
+                                Err(e) => format!("Failed to uninstall: {}", e),
+                            }
+                        } else {
+                            "Usage: /plugin uninstall <name>".to_string()
+                        }
+                    }
+                    "enable" => {
+                        if let Some(name) = arg {
+                            match enable_plugin(name, &self.cwd) {
+                                Ok(msg) => msg,
+                                Err(e) => format!("Failed to enable: {}", e),
+                            }
+                        } else {
+                            "Usage: /plugin enable <name>".to_string()
+                        }
+                    }
+                    "disable" => {
+                        if let Some(name) = arg {
+                            match disable_plugin(name, &self.cwd) {
+                                Ok(msg) => msg,
+                                Err(e) => format!("Failed to disable: {}", e),
+                            }
+                        } else {
+                            "Usage: /plugin disable <name>".to_string()
+                        }
+                    }
+                    _ => {
+                        "Usage: /plugin [list|install PATH|uninstall NAME|enable NAME|disable NAME]".to_string()
+                    }
                 };
+
                 let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
                         role: "system".to_string(),

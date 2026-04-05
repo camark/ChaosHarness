@@ -67,7 +67,20 @@
       "Bash(tasklist -v)",
       "Bash(timeout 5 cat -)",
       "Bash(python3 -c \"import json; json.loads\\('{\\\\\"type\\\\\":\\\\\"submit_line\\\\\",\\\\\"line\\\\\":\\\\\"test\\\\\"}'\\)\")",
-      "Bash(RUST_LOG=info timeout 5 ./target/release/rust_harness.exe --tui)"
+      "Bash(RUST_LOG=info timeout 5 ./target/release/rust_harness.exe --tui)",
+      "Bash(RUST_LOG=info timeout 120 ./target/release/rust_harness --print \"What tools\")",
+      "Bash(./target/release/rust_harness --print \"What tools\")",
+      "Bash(./target/release/rust_harness --print \"test\")",
+      "Bash(findstr /i \"mcp connected filesystem\")",
+      "Bash(findstr \"MCP\")",
+      "Bash(findstr /C:\"mcp\" /C:\"MCP\" /C:\"Initializing\" /C:\"Connected\")",
+      "Bash(Select-String \"mcp|MCP|Connected|Initializing\")",
+      "Bash(Select-Object -First 20)",
+      "Bash(./target/release/rust_harness --print \"列出当前目录的文件\")",
+      "Bash(./target/release/rust_harness --print \"使用 filesystem__read_file 工具读取 README.md 文件的内容\")",
+      "Bash(rm:*)",
+      "Bash(./target/release/rust_harness --stdio-backend)",
+      "Bash(timeout 5 cat)"
     ]
   }
 }
