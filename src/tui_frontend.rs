@@ -36,7 +36,7 @@ impl Backend {
             .args(["run", "--", "--stdio-backend"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::null())
             .spawn()?;
 
         let stdin = child.stdin.take().unwrap();
