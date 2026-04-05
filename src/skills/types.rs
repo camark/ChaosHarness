@@ -7,4 +7,5 @@ pub struct Skill {
     pub name: String,
     pub description: String,
     pub content: String,
+    pub source: String,
 }

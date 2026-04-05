@@ -4,6 +4,7 @@ use crate::Args;
 use crate::config::Settings;
 use crate::engine::query::QueryEngine;
 use crate::tools::init_tools;
+use crate::commands::{CommandContext, create_default_command_registry};
 use anyhow::Result;
 use rustyline::DefaultEditor;
 use tracing::info;
@@ -17,12 +18,18 @@ pub async fn run_repl(_args: &Args, settings: Settings) -> Result<()> {
     let tool_registry = init_tools().await;
 
     // Create query engine
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd)
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd.clone().into())
         .map_err(|e| anyhow::anyhow!(e))?;
 
+    // Create command registry
+    let command_registry = create_default_command_registry();
+
     println!("Rust Harness REPL. Type 'quit' or Ctrl-D to exit.");
-    println!("Type 'help' for available commands.");
+    println!("Type '/help' for available commands.");
 
     loop {
         let input = match rl.readline("> ") {
@@ -47,25 +54,57 @@ pub async fn run_repl(_args: &Args, settings: Settings) -> Result<()> {
             continue;
         }
 
+        // Check for slash commands
+        if input.starts_with('/') {
+            let ctx = CommandContext {
+                cwd: cwd.clone(),
+                settings: &settings,
+                registry: &command_registry,
+            };
+
+            if let Some(cmd) = command_registry.lookup(input) {
+                // Extract args from input
+                let args = input[1..].split_whitespace().skip(1).collect::<Vec<_>>().join(" ");
+                let result = (cmd.handler)(&args, &ctx);
+
+                if result.clear_screen {
+                    #[cfg(unix)]
+                    std::process::Command::new("clear").status().ok();
+                    #[cfg(windows)]
+                    std::process::Command::new("cmd").args(["/C", "cls"]).status().ok();
+                }
+
+                if let Some(msg) = result.message {
+                    println!("{}", msg);
+                }
+
+                if result.should_exit {
+                    break;
+                }
+
+                rl.add_history_entry(input)?;
+                continue;
+            } else {
+                println!("Unknown command. Type '/help' for available commands.");
+                rl.add_history_entry(input)?;
+                continue;
+            }
+        }
+
+        // Handle built-in REPL commands (no slash)
         match input {
             "quit" | "exit" => {
                 println!("Goodbye!");
                 break;
-            }
-            "help" => {
-                println!("Available commands:");
-                println!("  quit, exit - Exit the REPL");
-                println!("  help - Show this help message");
-                println!("  clear - Clear the screen");
-                println!("  usage - Show token usage");
-                println!();
-                println!("Or type any prompt to send to the AI.");
             }
             "clear" => {
                 #[cfg(unix)]
                 std::process::Command::new("clear").status().ok();
                 #[cfg(windows)]
                 std::process::Command::new("cmd").args(["/C", "cls"]).status().ok();
+            }
+            "help" => {
+                println!("{}", command_registry.help_text());
             }
             "usage" => {
                 let usage = query_engine.get_usage().await;

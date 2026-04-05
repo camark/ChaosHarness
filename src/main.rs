@@ -3,6 +3,7 @@
 //! A rewrite of the OpenHarness Python application in Rust.
 
 mod api;
+mod commands;
 mod config;
 mod engine;
 mod hooks;

@@ -79,6 +79,10 @@ src/
 │   ├── client.rs        # Anthropic-compatible client with retry logic
 │   ├── errors.rs        # Error types (Authentication, RateLimit, Request, Network)
 │   └── usage.rs         # Token usage tracking
+├── commands/            # Slash command system
+│   ├── types.rs         # CommandResult, CommandContext, SlashCommand types
+│   ├── registry.rs      # CommandRegistry with built-in command handlers
+│   └── mod.rs           # Module exports
 ├── config/              # Configuration
 │   ├── paths.rs         # Path resolution (~/.rust_harness)
 │   └── settings.rs      # Settings model, loading, env overrides
@@ -194,6 +198,7 @@ When implementing missing features, reference the OpenHarness Python implementat
 ### Phase 1: Core Tools - COMPLETED ✅
 ### Phase 2: Query Engine Enhancements - COMPLETED ✅
 ### Phase 3: Hooks System - COMPLETED ✅
+### Phase 4: Skills & Plugins - COMPLETED ✅
 
 **Implemented:**
 - ✅ CLI with clap (all flags from Python version)
@@ -211,19 +216,9 @@ When implementing missing features, reference the OpenHarness Python implementat
 - ✅ Configuration system with env overrides
 - ✅ Permission modes (Default/Plan/FullAuto)
 - ✅ Hooks system with PreToolUse/PostToolUse/OnError/OnTurnComplete events
-
-**Next Phases (Prioritized):**
-
-Phase 4: Skills & Plugins
-- ⚠️ Skills loader from ~/.rust_harness/skills/
-- ⚠️ Plugin loader (claude-code compatible)
-- ⚠️ Slash commands in REPL (/help, /commit, /plan, etc.)
-
-Phase 5: Advanced Features
-- ⚠️ Memory manager with MEMORY.md persistence
-- ⚠️ MCP client implementation
-- ⚠️ Session storage and resume
-- ⚠️ Multi-agent swarm coordination
+- ✅ Slash commands system (/help, /clear, /usage, /skills, /plugin, /hooks, /config, etc.)
+- ✅ Skills loader from ~/.rust_harness/skills/
+- ✅ Plugin loader (claude-code compatible)
 
 ## Code Style
 
