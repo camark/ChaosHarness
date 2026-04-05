@@ -107,7 +107,8 @@ pub struct Settings {
     pub hooks: HooksSettings,
     #[serde(default)]
     pub enabled_plugins: HashMap<String, bool>,
-    #[serde(default)]
+    /// MCP servers configuration
+    #[serde(default, alias = "mcp_servers", rename = "mcpServers")]
     pub mcp_servers: HashMap<String, serde_json::Value>,
 
     // UI

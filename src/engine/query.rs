@@ -10,6 +10,7 @@ use crate::hooks::executor::HookExecutor;
 use crate::hooks::registry::HookRegistry;
 use crate::permissions::checker::PermissionChecker;
 use crate::tools::base::{ToolExecutionContext, ToolRegistry};
+use crate::mcp::client::McpManager;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,6 +42,7 @@ pub struct QueryEngine {
     usage: Arc<Mutex<UsageTracker>>,
     max_turns: usize,
     use_openai_format: bool,
+    mcp_manager: Option<Arc<McpManager>>,
 }
 
 impl QueryEngine {
@@ -80,6 +82,9 @@ impl QueryEngine {
         let mut settings = settings;
         settings.system_prompt = system_prompt;
 
+        // Initialize MCP manager if servers are configured
+        let mcp_manager: Option<Arc<McpManager>> = None; // Will be initialized below
+
         Ok(Self {
             client,
             tool_registry,
@@ -91,7 +96,33 @@ impl QueryEngine {
             usage: Arc::new(Mutex::new(UsageTracker::default())),
             max_turns: 200,
             use_openai_format,
+            mcp_manager,
         })
+    }
+
+    /// Initialize MCP connections and register MCP tools
+    pub async fn initialize_mcp(&mut self) -> Vec<String> {
+        // Create MCP manager from settings
+        let manager = McpManager::new(self.settings.clone());
+
+        // Connect to all configured servers
+        let connected_servers = manager.initialize_all().await.unwrap_or_else(|e| {
+            tracing::error!("Failed to initialize MCP manager: {}", e);
+            Vec::new()
+        });
+
+        // Register MCP tools if any servers connected
+        if !connected_servers.is_empty() {
+            let mcp_manager = Arc::new(manager);
+
+            // Register MCP tools with the tool registry
+            crate::tools::mcp::register_mcp_tools(mcp_manager.clone(), &self.tool_registry).await;
+
+            self.mcp_manager = Some(mcp_manager);
+            tracing::info!("Initialized {} MCP servers", connected_servers.len());
+        }
+
+        connected_servers
     }
 
     pub fn with_max_turns(mut self, max_turns: usize) -> Self {
@@ -374,6 +405,7 @@ impl Clone for QueryEngine {
             usage: self.usage.clone(),
             max_turns: self.max_turns,
             use_openai_format: self.use_openai_format,
+            mcp_manager: self.mcp_manager.clone(),
         }
     }
 }

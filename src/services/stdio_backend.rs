@@ -127,13 +127,21 @@ impl StdioBackend {
     async fn init_query_engine(&mut self) -> io::Result<()> {
         if self.query_engine.is_none() {
             let tool_registry = init_tools().await;
-            self.query_engine = Some(QueryEngine::new(
+            let mut query_engine = QueryEngine::new(
                 self.settings.clone(),
                 tool_registry,
                 self.cwd.clone().into(),
             ).map_err(|e| {
                 io::Error::new(io::ErrorKind::Other, format!("Failed to create query engine: {}", e))
-            })?);
+            })?;
+
+            // Initialize MCP connections
+            let connected_servers = query_engine.initialize_mcp().await;
+
+            // Store connected server info for status display
+            let _ = connected_servers; // TODO: Store in state
+
+            self.query_engine = Some(query_engine);
         }
         Ok(())
     }

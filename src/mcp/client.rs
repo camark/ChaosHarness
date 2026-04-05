@@ -9,6 +9,7 @@ use anyhow::{Result, anyhow, bail};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
@@ -31,8 +32,14 @@ pub struct McpClient {
     pub tools: Vec<McpTool>,
     pub resources: Vec<McpResource>,
     pub prompts: Vec<McpPrompt>,
-    process: Option<Child>,
-    request_id: i64,
+    process: Option<Arc<Mutex<Child>>>,
+    request_id: Arc<Mutex<i64>>,
+    /// Channel sender for sending requests to the reader task
+    request_tx: Option<tokio::sync::mpsc::Sender<(i64, String)>>,
+    /// Channel receiver for receiving responses
+    response_rx: Option<Arc<Mutex<tokio::sync::mpsc::Receiver<(i64, Option<serde_json::Value>, Option<String>)>>>>,
+    // Shared map of pending requests: request_id -> Sender for response
+    pending_requests: Arc<Mutex<HashMap<i64, tokio::sync::oneshot::Sender<(Option<serde_json::Value>, Option<String>)>>>>,
 }
 
 impl McpClient {
@@ -45,8 +52,77 @@ impl McpClient {
             resources: Vec::new(),
             prompts: Vec::new(),
             process: None,
-            request_id: 0,
+            request_id: Arc::new(Mutex::new(0)),
+            request_tx: None,
+            response_rx: None,
+            pending_requests: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Start the background reader task for stdio transport
+    async fn start_reader_task(
+        mut child: Child,
+        pending_requests: Arc<Mutex<HashMap<i64, tokio::sync::oneshot::Sender<(Option<serde_json::Value>, Option<String>)>>>>,
+    ) -> Result<tokio::sync::mpsc::Sender<(i64, String)>> {
+        let stdin = child.stdin.take().ok_or_else(|| anyhow!("Failed to open stdin"))?;
+        let stdout = child.stdout.take().ok_or_else(|| anyhow!("Failed to open stdout"))?;
+
+        let mut reader = BufReader::new(stdout).lines();
+        let (request_tx, mut request_rx) = tokio::sync::mpsc::channel::<(i64, String)>(100);
+
+        // Wrap stdin in Arc<Mutex> for shared access
+        let stdin = Arc::new(Mutex::new(stdin));
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // Read from stdout
+                    result = reader.next_line() => {
+                        match result {
+                            Ok(Some(line)) => {
+                                // Try to parse as JSON-RPC response
+                                if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(&line) {
+                                    let id = response.id.and_then(|v| v.as_i64());
+                                    if let Some(req_id) = id {
+                                        let mut pending = pending_requests.lock().await;
+                                        if let Some(tx) = pending.remove(&req_id) {
+                                            let _ = tx.send((response.result, response.error.map(|e| e.message)));
+                                        }
+                                    }
+                                }
+                                // Also handle notifications (they don't have responses)
+                            }
+                            Ok(None) => {
+                                // EOF - server exited
+                                tracing::warn!("MCP server stdout closed");
+                                break;
+                            }
+                            Err(e) => {
+                                tracing::error!("Error reading from MCP server: {}", e);
+                            }
+                        }
+                    }
+                    // Write to stdin
+                    Some((_id, msg)) = request_rx.recv() => {
+                        let stdin_lock = stdin.lock().await;
+                        let mut stdin_ref = stdin_lock;
+                        let write_result = async {
+                            stdin_ref.write_all(msg.as_bytes()).await?;
+                            stdin_ref.write_all(b"\n").await?;
+                            stdin_ref.flush().await
+                        };
+                        if let Err(e) = write_result.await {
+                            tracing::error!("Failed to write to MCP server: {}", e);
+                        }
+                    }
+                }
+            }
+
+            // Try to kill the process when done
+            let _ = child.kill().await;
+        });
+
+        Ok(request_tx)
     }
 
     /// Connect to the MCP server
@@ -77,10 +153,15 @@ impl McpClient {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let process = cmd.spawn()
+        let child = cmd.spawn()
             .map_err(|e| anyhow!("Failed to spawn process '{}': {}", command, e))?;
 
-        self.process = Some(process);
+        let pending = self.pending_requests.clone();
+        let request_tx = Self::start_reader_task(child, pending).await?;
+
+        self.request_tx = Some(request_tx);
+        self.process = None; // Process is now managed by the reader task
+
         Ok(())
     }
 
@@ -111,7 +192,10 @@ impl McpClient {
             },
         };
 
-        let result = self.send_request("initialize", Some(json!(init_request))).await?;
+        let params = serde_json::to_value(&init_request)
+            .map_err(|e| anyhow!("Failed to serialize init request: {}", e))?;
+
+        let result = self.send_request("initialize", Some(params)).await?;
 
         let response: InitializeResponse = serde_json::from_value(result)
             .map_err(|e| anyhow!("Failed to parse initialize response: {}", e))?;
@@ -217,30 +301,84 @@ impl McpClient {
     }
 
     /// Send a JSON-RPC request
-    async fn send_request(&self, method: &str, _params: Option<serde_json::Value>) -> Result<serde_json::Value> {
-        // In a full implementation, this would:
-        // 1. Generate request ID
-        // 2. Send JSON-RPC request to server
-        // 3. Wait for response
-        // 4. Parse and return result
+    async fn send_request(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value> {
+        let request_id = {
+            let mut id = self.request_id.lock().await;
+            *id += 1;
+            *id
+        };
 
-        // For now, return a placeholder
-        warn!("send_request not fully implemented: {}", method);
-        Ok(json!({}))
+        let request = JsonRpcRequest::new(request_id, method, params);
+        let request_str = serde_json::to_string(&request)
+            .map_err(|e| anyhow!("Failed to serialize request: {}", e))?;
+
+        tracing::debug!("MCP request: {}", request_str);
+
+        // Create a channel to receive the response
+        let (tx, rx) = tokio::sync::oneshot::channel::<(Option<serde_json::Value>, Option<String>)>();
+
+        // Register the pending request
+        {
+            let mut pending = self.pending_requests.lock().await;
+            pending.insert(request_id, tx);
+        }
+
+        // Send the request
+        let request_tx = self.request_tx.as_ref()
+            .ok_or_else(|| anyhow!("MCP client not connected"))?;
+
+        request_tx.send((request_id, request_str)).await
+            .map_err(|e| anyhow!("Failed to send request: {}", e))?;
+
+        // Wait for response with timeout
+        let timeout = tokio::time::Duration::from_secs(self.config.timeout);
+        let response = tokio::time::timeout(timeout, rx)
+            .await
+            .map_err(|_| anyhow!("Request '{}' timed out after {}s", method, self.config.timeout))?
+            .map_err(|_| anyhow!("Response channel closed"))?;
+
+        if let Some(error_msg) = response.1 {
+            return Err(anyhow!("MCP error: {}", error_msg));
+        }
+
+        response.0.ok_or_else(|| anyhow!("Empty response from MCP server"))
     }
 
     /// Send a notification
-    async fn send_notification(&self, method: &str, _params: Option<serde_json::Value>) -> Result<()> {
-        // Notifications don't expect a response
-        warn!("send_notification not fully implemented: {}", method);
+    async fn send_notification(&self, method: &str, params: Option<serde_json::Value>) -> Result<()> {
+        let request_id = {
+            let mut id = self.request_id.lock().await;
+            *id += 1;
+            *id
+        };
+
+        // Notifications use null id
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: serde_json::Value::Null,
+            method: method.to_string(),
+            params,
+        };
+
+        let request_str = serde_json::to_string(&request)
+            .map_err(|e| anyhow!("Failed to serialize notification: {}", e))?;
+
+        tracing::debug!("MCP notification: {}", request_str);
+
+        // Send the notification
+        let request_tx = self.request_tx.as_ref()
+            .ok_or_else(|| anyhow!("MCP client not connected"))?;
+
+        request_tx.send((request_id, request_str)).await
+            .map_err(|e| anyhow!("Failed to send notification: {}", e))?;
+
         Ok(())
     }
 
     /// Disconnect from the server
     pub async fn disconnect(&mut self) -> Result<()> {
-        if let Some(ref mut process) = self.process {
-            process.kill().await.ok();
-        }
+        // Drop the request_tx channel - the reader task will exit when it detects EOF
+        self.request_tx = None;
         self.process = None;
         self.state = ClientState::Disconnected;
         Ok(())
@@ -334,6 +472,29 @@ impl McpManager {
             .collect()
     }
 
+    /// List tools for a specific server
+    pub async fn list_tools_for_server(&self, server_name: &str) -> Option<Vec<McpTool>> {
+        let clients = self.clients.lock().await;
+        let client = clients.get(server_name)?;
+        Some(client.tools.clone())
+    }
+
+    /// Get all tools from all connected servers
+    pub async fn list_all_tools(&self) -> Vec<(String, McpTool)> {
+        let clients = self.clients.lock().await;
+        let mut all_tools = Vec::new();
+
+        for (server_name, client) in clients.iter() {
+            if client.is_ready() {
+                for tool in &client.tools {
+                    all_tools.push((server_name.clone(), tool.clone()));
+                }
+            }
+        }
+
+        all_tools
+    }
+
     /// Call a tool on any connected server
     pub async fn call_tool(&self, server_name: &str, tool_name: &str, arguments: serde_json::Value) -> Result<ToolCallResult> {
         let clients = self.clients.lock().await;
@@ -344,7 +505,7 @@ impl McpManager {
     }
 }
 
-use tracing::{info, warn, error};
+use tracing::{info, error};
 
 #[cfg(test)]
 mod tests {

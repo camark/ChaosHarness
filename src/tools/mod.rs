@@ -14,6 +14,7 @@ pub mod ask_user;
 pub mod directory_tree;
 pub mod skill;
 pub mod init;
+pub mod mcp;
 
 pub use base::ToolRegistry;
 pub use init::init_tools;

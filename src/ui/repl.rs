@@ -22,8 +22,14 @@ pub async fn run_repl(_args: &Args, settings: Settings) -> Result<()> {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd.clone().into())
+    let mut query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd.clone().into())
         .map_err(|e| anyhow::anyhow!(e))?;
+
+    // Initialize MCP connections
+    let connected_servers = query_engine.initialize_mcp().await;
+    if !connected_servers.is_empty() {
+        println!("Connected to {} MCP server(s): {}", connected_servers.len(), connected_servers.join(", "));
+    }
 
     // Create command registry
     let command_registry = create_default_command_registry();
@@ -142,8 +148,11 @@ pub async fn run_print_mode(prompt: &str, _args: &Args, settings: Settings) -> R
 
     // Create query engine
     let cwd = std::env::current_dir().unwrap_or_default();
-    let query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd)
+    let mut query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd)
         .map_err(|e| anyhow::anyhow!(e))?;
+
+    // Initialize MCP connections
+    let _ = query_engine.initialize_mcp().await;
 
     match query_engine.send_message(prompt.to_string()).await {
         Ok(response) => {
@@ -165,8 +174,11 @@ pub async fn run_resume_session(_args: &Args, settings: Settings) -> Result<()> 
 
     // Create query engine
     let cwd = std::env::current_dir().unwrap_or_default();
-    let _query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd)
+    let mut query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd)
         .map_err(|e| anyhow::anyhow!(e))?;
+
+    // Initialize MCP connections
+    let _ = query_engine.initialize_mcp().await;
 
     // In a full implementation, this would load the previous session
     // and restore the conversation history
