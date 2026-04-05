@@ -1,5 +1,5 @@
 //! Ratatui TUI frontend for Rust Harness
-//! Simple synchronous version for better reliability on Windows
+//! Simple and reliable version
 
 use crossterm::{
     event::{self, KeyCode, KeyEventKind, KeyModifiers},
@@ -13,7 +13,7 @@ use ratatui::{
 use std::{
     io::{self, Write, BufRead, BufReader},
     time::Duration,
-    process::{Command, Stdio, Child},
+    process::{Command, Stdio, Child, ChildStdin, ChildStdout},
     sync::mpsc::{self, TryRecvError},
     thread,
 };
@@ -22,8 +22,9 @@ use std::{
 struct Backend {
     tx: mpsc::Sender<String>,
     rx: mpsc::Receiver<String>,
-    _thread: thread::JoinHandle<()>,
-    _child: Child, // Keep child process alive
+    _child: Child,
+    _stdin_handle: thread::JoinHandle<()>,
+    _stdout_handle: thread::JoinHandle<()>,
 }
 
 impl Backend {
@@ -42,67 +43,40 @@ impl Backend {
         let stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
 
-        // Wrap in Option to make moving easier
-        let mut stdin_opt = Some(stdin);
-        let mut stdout_opt = Some(stdout);
-
-        let handle = thread::spawn(move || {
-            // Take ownership of the values
-            let stdout = stdout_opt.take().unwrap();
-            let stdin = stdin_opt.take().unwrap();
-
-            // Create two new channels for internal communication
-            let (stdout_tx, stdout_rx) = mpsc::channel();
-            let (stdin_tx, stdin_rx) = mpsc::channel();
-
-            // Thread 1: Read stdout
-            thread::spawn(move || {
-                let mut reader = BufReader::new(stdout);
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    match reader.read_line(&mut line) {
-                        Ok(0) => break,
-                        Ok(_) => {
-                            let trimmed = line.trim();
-                            if let Some(json_str) = trimmed.strip_prefix("OHJSON:") {
-                                let _ = stdout_tx.send(json_str.to_string());
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-
-            // Thread 2: Write stdin
-            thread::spawn(move || {
-                let mut writer = stdin;
-                for msg in stdin_rx {
-                    let _ = writeln!(writer, "{}", msg);
-                    let _ = writer.flush();
-                }
-            });
-
-            // Forward messages from our rx to stdin_tx
-            let forward_handle = thread::spawn(move || {
-                for msg in rx {
-                    let _ = stdin_tx.send(msg);
-                }
-            });
-
-            // Forward messages from stdout_rx to out_tx
-            for msg in stdout_rx {
-                let _ = out_tx.send(msg);
+        // Thread to write to stdin
+        let stdin_handle = thread::spawn(move || {
+            let mut writer = stdin;
+            for msg in rx {
+                let _ = writeln!(writer, "{}", msg);
+                let _ = writer.flush();
             }
+        });
 
-            let _ = forward_handle.join();
+        // Thread to read from stdout
+        let stdout_handle = thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match reader.read_line(&mut line) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        let trimmed = line.trim();
+                        if let Some(json_str) = trimmed.strip_prefix("OHJSON:") {
+                            let _ = out_tx.send(json_str.to_string());
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
         });
 
         Ok(Self {
             tx,
             rx: out_rx,
-            _thread: handle,
             _child: child,
+            _stdin_handle: stdin_handle,
+            _stdout_handle: stdout_handle,
         })
     }
 
@@ -225,7 +199,6 @@ impl App {
         self.input.clear();
         self.busy = true;
 
-        // Don't add user message here - backend will echo it via transcript_item
         // Send to backend
         let msg = format!(r#"{{"type":"submit_line","line":"{}"}}"#,
             line.replace('\\', "\\\\").replace('"', "\\\""));
