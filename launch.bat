@@ -27,15 +27,16 @@ exit /b
 :FRONTEND
 echo.
 echo Starting Frontend mode...
-echo Note: Requires TTY support (Windows Terminal or CMD)
-cd frontend
+echo Note: Requires TTY support (Windows Terminal)
+cd /d %~dp0frontend
 if exist node_modules (
-    call start.bat
+    echo Frontend dependencies found, starting...
 ) else (
     echo Installing dependencies...
-    npm install
-    call start.bat
+    call npm install
 )
+REM Set environment and start in new Windows Terminal tab
+start wt -w 0 nt -p "Command Prompt" cmd /k "cd /d %CD% && set OPENHARNESS_FRONTEND_CONFIG={\"backend_command\":[\"cargo\",\"run\",\"--\",\"--stdio-backend\"]} && npx tsx src/index.tsx"
 exit /b
 
 :BACKEND
