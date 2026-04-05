@@ -1,0 +1,70 @@
+{
+  "_comment": "RustHarness Settings - Copy this file to ~/.rust_harness/settings.json",
+
+  "api_key": "",
+  "_model_comment": "Model to use: claude-sonnet-4-20250514, claude-opus-4-20250514, etc.",
+  "model": "claude-sonnet-4-20250514",
+  "max_tokens": 16384,
+  "base_url": null,
+  "_base_url_example": "https://api.anthropic.com or custom endpoint",
+  "api_format": "anthropic",
+  "_api_format_options": "anthropic or openai",
+
+  "_system_prompt": "Custom system prompt (null uses default)",
+  "system_prompt": null,
+
+  "permission": {
+    "mode": "default",
+    "_mode_options": "default (ask before write/execute), plan (block writes), full_auto (allow all)",
+    "allowed_tools": [],
+    "_allowed_tools_example": ["bash", "read_file", "write_file"],
+    "denied_tools": [],
+    "path_rules": [],
+    "_path_rules_example": [{"pattern": "**/*.rs", "allow": true}, {"pattern": "**/config/*", "allow": false}],
+    "denied_commands": [],
+    "_denied_commands_example": ["rm -rf /", "sudo", "format"]
+  },
+
+  "memory": {
+    "enabled": true,
+    "max_files": 5,
+    "max_entrypoint_lines": 200
+  },
+
+  "hooks": {
+    "enabled": false,
+    "hooks": []
+  },
+  "_hooks_example": [
+    {
+      "name": "security_scan",
+      "event": "pre_tool_use",
+      "command": "echo 'Checking tool: %HOOK_NAME%'",
+      "timeout": 10,
+      "blocking": true,
+      "cwd": null
+    }
+  ],
+
+  "enabled_plugins": {},
+  "_enabled_plugins_example": {"my-plugin": true},
+
+  "mcp_servers": {},
+  "_mcp_servers_example": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "type": "stdio"
+    }
+  },
+
+  "theme": "default",
+  "output_style": "default",
+  "vim_mode": false,
+  "voice_mode": false,
+  "fast_mode": false,
+  "effort": "medium",
+  "_effort_options": "low, medium, high, max",
+  "passes": 1,
+  "verbose": false
+}
