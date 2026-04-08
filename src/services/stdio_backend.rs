@@ -553,6 +553,37 @@ impl StdioBackend {
                     });
                 }
             }
+            "/hooks" => {
+                use crate::config::load_settings;
+
+                let settings = load_settings(None).unwrap_or_default();
+                let hooks = settings.hooks.hooks;
+                if hooks.is_empty() {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some("No hooks configured. Add hooks to ~/.rust_harness/settings.json".to_string()),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                } else {
+                    let lines: Vec<_> = hooks
+                        .iter()
+                        .map(|h| format!("  - {} [{}]: {}", h.name, h.event, h.command))
+                        .collect();
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some(format!("Configured hooks:\n{}", lines.join("\n"))),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                }
+            }
             _ => {
                 let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
