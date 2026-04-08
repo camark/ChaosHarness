@@ -127,11 +127,21 @@ fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
     if candidate.starts_with("~/") || candidate == "~" {
         if let Some(home_dir) = dirs::home_dir() {
             let remainder = if candidate == "~" { "" } else { &candidate[2..] };
+
+            // Special handling for Desktop - use OS-specific desktop directory
+            if remainder == "Desktop" {
+                if let Some(desktop_dir) = dirs::desktop_dir() {
+                    return desktop_dir;
+                }
+                // Fallback if desktop_dir not available
+                return home_dir.join("Desktop");
+            }
+
             return home_dir.join(remainder);
         }
     }
 
-    // Auto-detect Desktop directory if candidate is "Desktop" or "~/Desktop"
+    // Auto-detect Desktop directory if candidate is "Desktop" or ends with "/Desktop"
     if candidate == "Desktop" || candidate.ends_with("/Desktop") {
         if let Some(desktop_dir) = dirs::desktop_dir() {
             return desktop_dir;
