@@ -8,9 +8,9 @@ console.log('=== Frontend Debug Test ===');
 console.log('Starting backend process...');
 
 // Start backend process
-const backend = spawn('cargo', ['run', '--', '--stdio-backend'], {
+const backend = spawn('../target/debug/rust_harness', ['--stdio-backend'], {
     stdio: ['pipe', 'pipe', 'inherit'],
-    cwd: 'C:/git/RustHarness',
+    cwd: '.',
     env: process.env
 });
 

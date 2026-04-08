@@ -81,7 +81,25 @@
       "Bash(rm:*)",
       "Bash(./target/release/rust_harness --stdio-backend)",
       "Bash(timeout 5 cat)",
-      "Bash(findstr /i open)"
+      "Bash(findstr /i open)",
+      "Bash(CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse cargo build:*)",
+      "WebFetch(domain:crates.io)",
+      "Bash(curl -s \"https://docs.rs/wecom-aibot-rust-sdk/latest/wecom_aibot_rust_sdk/\")",
+      "Bash(npm --version)",
+      "Bash(sudo apt-get:*)",
+      "Bash(apt-get update:*)",
+      "Bash(apt-get install:*)",
+      "Bash(OPENHARNESS_FRONTEND_CONFIG='{\"backend_command\":[\"../target/debug/rust_harness\",\"--stdio-backend\"]}' npm start)",
+      "Bash(ls:*)",
+      "Bash(pkill -f \"tsx src/index.tsx\")",
+      "Bash(script -q -c \"npm start\" /dev/null)",
+      "Bash(script -q -c \"npm start\" /tmp/tui_test.log)",
+      "Bash(npm list:*)",
+      "Bash(tty:*)",
+      "Bash(chmod +x test-tty.sh)",
+      "Bash(chmod +x:*)",
+      "Bash(../target/debug/rust_harness --stdio-backend)",
+      "Bash(git push:*)"
     ]
   }
 }

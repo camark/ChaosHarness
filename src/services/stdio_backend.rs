@@ -385,10 +385,25 @@ impl StdioBackend {
                 });
             }
             "/status" => {
+                let state = self.get_initial_state();
                 let _ = self.send_event(stdout, BackendEvent::StateSnapshot {
-                    state: self.get_initial_state(),
+                    state: state.clone(),
                     mcp_servers: vec![],
                     bridge_sessions: vec![],
+                });
+                // Also show status in transcript
+                let model = state.get("model").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let mode = state.get("permission_mode").and_then(|v| v.as_str()).unwrap_or("default");
+                let cwd = state.get("working_directory").and_then(|v| v.as_str()).unwrap_or(".");
+                let status_text = format!("Model: {} | Mode: {} | CWD: {}", model, mode, cwd);
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some(status_text),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
                 });
             }
             cmd if cmd.starts_with("/plugin") => {

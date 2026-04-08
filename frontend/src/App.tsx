@@ -146,9 +146,9 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 		return false;
 	};
 
-	useInput((input, key) => {
+	useInput((inputChar, key) => {
 		// Ctrl+C → exit
-		if (key.ctrl && input === 'c') {
+		if (key.ctrl && inputChar === 'c') {
 			session.sendRequest({type: 'shutdown'});
 			exit();
 			return;
@@ -164,7 +164,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				setSelectIndex((i) => Math.min(selectModal.options.length - 1, i + 1));
 				return;
 			}
-			if (key.return) {
+			if (key.return || input === '\n') {
 				const selected = selectModal.options[selectIndex];
 				if (selected) {
 					selectModal.onSelect(selected.value);
@@ -212,7 +212,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 
 		// --- Question modal ---
 		if (session.modal?.kind === 'question') {
-			if (key.return) {
+			if (key.return || input === '\n') {
 				session.sendRequest({
 					type: 'question_response',
 					request_id: session.modal.request_id,
@@ -223,8 +223,8 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				return;
 			}
 			// Handle text input for question modal
-			if (input && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow) {
-				if (key.backspace) {
+			if (inputChar && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow) {
+				if (key.backspace || key.delete) {
 					setModalInput(modalInput.slice(0, -1));
 				} else {
 					setModalInput(modalInput + input);
@@ -248,7 +248,7 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				setPickerIndex((i) => Math.min(commandHints.length - 1, i + 1));
 				return;
 			}
-			if (key.return) {
+			if (key.return || input === '\n') {
 				const selected = commandHints[pickerIndex];
 				if (selected) {
 					setInput('');
@@ -270,13 +270,13 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 				return;
 			}
 			// Handle backspace to delete input
-			if (key.backspace) {
+			if (key.backspace || key.delete) {
 				setInput(prev => prev.slice(0, -1));
 				return;
 			}
 			// Still allow typing to complete command
-			if (input && !key.ctrl && !key.meta) {
-				setInput(prev => prev + input);
+			if (inputChar && !key.ctrl && !key.meta) {
+				setInput(prev => prev + inputChar);
 			}
 			return;
 		}
@@ -298,15 +298,16 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 		}
 
 		// --- Handle Enter for submission ---
-		if (key.return) {
-			if (input.trim()) {
-				onSubmit(input);
+		if (key.return || inputChar === '\n') {
+			const trimmedInput = input.trim();
+			if (trimmedInput) {
+				onSubmit(trimmedInput);
 			}
 			return;
 		}
 
 		// --- Handle Backspace ---
-		if (key.backspace) {
+		if (key.backspace || key.delete) {
 			setInput(prev => prev.slice(0, -1));
 			return;
 		}
@@ -318,8 +319,8 @@ export function App({config}: {config: FrontendConfig}): React.JSX.Element {
 		}
 
 		// --- Handle regular character input ---
-		if (input && !key.ctrl && !key.meta && !key.tab) {
-			setInput(prev => prev + input);
+		if (inputChar && !key.ctrl && !key.meta && !key.tab) {
+			setInput(prev => prev + inputChar);
 		}
 	});
 
