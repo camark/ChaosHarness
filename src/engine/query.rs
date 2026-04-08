@@ -141,6 +141,17 @@ impl QueryEngine {
         *msgs = messages;
     }
 
+    /// Load messages from JSON values (for session resume)
+    pub async fn load_messages(&self, messages: Vec<serde_json::Value>) {
+        let mut msgs = self.messages.lock().await;
+        msgs.clear();
+        for msg in messages {
+            if let Ok(conv_msg) = serde_json::from_value::<ConversationMessage>(msg) {
+                msgs.push(conv_msg);
+            }
+        }
+    }
+
     /// Get total usage
     pub async fn get_usage(&self) -> UsageTracker {
         self.usage.lock().await.clone()

@@ -216,6 +216,9 @@ impl StdioBackend {
             "/resume".to_string(),
             "/sessions".to_string(),
             "/export".to_string(),
+            "/delete_session".to_string(),
+            "/init".to_string(),
+            "/version".to_string(),
             "/permissions".to_string(),
             "/plan".to_string(),
         ]
@@ -583,6 +586,571 @@ impl StdioBackend {
                         },
                     });
                 }
+            }
+            "/usage" => {
+                // Get token usage from query engine if available
+                let usage_info = if let Some(ref qe) = self.query_engine {
+                    let usage = qe.get_usage().await;
+                    format!(
+                        "Token Usage:\n  Input tokens: {}\n  Output tokens: {}\n  Total tokens: {}",
+                        usage.total_input_tokens,
+                        usage.total_output_tokens,
+                        usage.total_input_tokens + usage.total_output_tokens
+                    )
+                } else {
+                    "Token Usage:\n  No session active yet.".to_string()
+                };
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some(usage_info),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
+                });
+            }
+            "/config" => {
+                use crate::config::load_settings;
+                use crate::config::get_config_file_path;
+
+                let config_path = get_config_file_path();
+                let settings = load_settings(None).unwrap_or_default();
+
+                let config_text = format!(
+                    "Configuration:\n  Config file: {}\n  Model: {}\n  Max tokens: {}\n  API format: {}\n  Base URL: {}\n  Memory enabled: {}\n  Hooks enabled: {}",
+                    config_path.display(),
+                    settings.model,
+                    settings.max_tokens,
+                    settings.api_format,
+                    settings.base_url.as_deref().unwrap_or("(not set)"),
+                    settings.memory.enabled,
+                    settings.hooks.enabled
+                );
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some(config_text),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
+                });
+            }
+            "/memory" => {
+                use crate::memory::manager::MemoryManager;
+
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                let subcommand = parts.get(1).map(|s| *s).unwrap_or("");
+                let args = if parts.len() > 2 { parts[2..].join(" ") } else { String::new() };
+
+                match subcommand {
+                    "list" => {
+                        let memory_files = MemoryManager::list_memory_files(&self.cwd);
+                        let memory_text = if memory_files.is_empty() {
+                            "Memory:\n  No memory entries found.".to_string()
+                        } else {
+                            let mut text = format!("Memory entries ({} total):\n", memory_files.len());
+                            for (i, path) in memory_files.iter().enumerate() {
+                                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                                    text.push_str(&format!("  {}. {}\n", i + 1, name));
+                                }
+                            }
+                            text
+                        };
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some(memory_text),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: None,
+                            },
+                        });
+                    }
+                    "show" => {
+                        if args.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /memory show <name>".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        } else {
+                            match MemoryManager::read_memory(&self.cwd, &args) {
+                                Some(content) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(content),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: None,
+                                        },
+                                    });
+                                }
+                                None => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Memory entry not found: {}", args)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    "add" => {
+                        // Format: /memory add TITLE :: CONTENT
+                        if let Some(separator_pos) = args.find("::") {
+                            let title = args[..separator_pos].trim();
+                            let content = args[separator_pos + 2..].trim();
+
+                            if title.is_empty() || content.is_empty() {
+                                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                    item: TranscriptItem {
+                                        role: "system".to_string(),
+                                        text: Some("Usage: /memory add TITLE :: CONTENT".to_string()),
+                                        tool_name: None,
+                                        tool_input: None,
+                                        is_error: Some(true),
+                                    },
+                                });
+                            } else {
+                                match MemoryManager::add_memory_entry(&self.cwd, title, content) {
+                                    Ok(path) => {
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!(
+                                                    "Added memory entry: {}",
+                                                    path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown")
+                                                )),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: None,
+                                            },
+                                        });
+                                    }
+                                    Err(e) => {
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!("Error: {}", e)),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: Some(true),
+                                            },
+                                        });
+                                    }
+                                }
+                            }
+                        } else {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /memory add TITLE :: CONTENT".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        }
+                    }
+                    "remove" => {
+                        if args.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /memory remove <name>".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        } else {
+                            match MemoryManager::remove_memory_entry(&self.cwd, &args) {
+                                Ok(true) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Removed memory entry: {}", args)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: None,
+                                        },
+                                    });
+                                }
+                                Ok(false) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Memory entry not found: {}", args)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                                Err(e) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Error: {}", e)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    "" => {
+                        // Show memory summary
+                        let memory_dir = MemoryManager::get_project_memory_dir(&self.cwd);
+                        let entrypoint = MemoryManager::get_memory_entrypoint(&self.cwd);
+                        let memory_files = MemoryManager::list_memory_files(&self.cwd);
+
+                        let mut memory_text = format!(
+                            "Memory:\n  Directory: {}\n  Index: {}\n  Entries: {}\n",
+                            memory_dir.display(),
+                            entrypoint.display(),
+                            memory_files.len()
+                        );
+
+                        if memory_files.is_empty() {
+                            memory_text.push_str("\n  No memory entries found.");
+                        } else {
+                            memory_text.push_str("\n  Memory files:\n");
+                            for (i, path) in memory_files.iter().enumerate() {
+                                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                                    memory_text.push_str(&format!("    {}. {}\n", i + 1, name));
+                                }
+                            }
+                        }
+
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some(memory_text),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: None,
+                            },
+                        });
+                    }
+                    _ => {
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some("Usage: /memory [list|show <name>|add TITLE :: CONTENT|remove <name>]".to_string()),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: Some(true),
+                            },
+                        });
+                    }
+                }
+            }
+            "/resume" => {
+                use crate::services::session_storage::load_session_by_id;
+
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                if parts.len() < 2 {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some("Usage: /resume <session-id>\n\nUse /sessions to list available sessions.".to_string()),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                } else {
+                    let session_id = parts[1];
+                    match load_session_by_id(&self.cwd, session_id) {
+                        Some(data) => {
+                            // Load session messages into query engine
+                            if self.query_engine.is_none() {
+                                let _ = self.init_query_engine().await;
+                            }
+
+                            if let Some(ref qe) = self.query_engine {
+                                let messages = serde_json::from_str::<Vec<serde_json::Value>>(
+                                    &serde_json::to_string(&data.messages).unwrap_or_default()
+                                ).unwrap_or_default();
+
+                                qe.load_messages(messages).await;
+
+                                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                    item: TranscriptItem {
+                                        role: "system".to_string(),
+                                        text: Some(format!(
+                                            "Resumed session: {}\n  Summary: {}\n  Messages loaded: {}",
+                                            session_id,
+                                            data.summary.as_deref().unwrap_or("(no summary)"),
+                                            data.messages.len()
+                                        )),
+                                        tool_name: None,
+                                        tool_input: None,
+                                        is_error: None,
+                                    },
+                                });
+                            }
+                        }
+                        None => {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!("Session '{}' not found.", session_id)),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+            "/sessions" => {
+                use crate::services::session_storage::{list_session_snapshots, get_project_session_dir};
+
+                let session_dir = get_project_session_dir(&self.cwd);
+                let sessions = list_session_snapshots(&self.cwd, 20);
+
+                let mut session_text = format!(
+                    "Sessions (directory: {}):\n",
+                    session_dir.display()
+                );
+
+                if sessions.is_empty() {
+                    session_text.push_str("\n  No saved sessions found.");
+                } else {
+                    for (i, session) in sessions.iter().enumerate() {
+                        session_text.push_str(&format!(
+                            "\n  {}. {} [{}]
+      Created: {}
+      Messages: {}",
+                            i + 1,
+                            session.session_id,
+                            session.summary.chars().take(50).collect::<String>(),
+                            session.created_at.format("%Y-%m-%d %H:%M"),
+                            session.message_count
+                        ));
+                    }
+                }
+
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some(session_text),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
+                });
+            }
+            "/export" => {
+                use crate::services::session_storage::export_session_markdown;
+
+                // Get messages from current session
+                let messages = if let Some(ref qe) = self.query_engine {
+                    let msgs = qe.get_messages().await;
+                    // Convert ConversationMessage to serde_json::Value
+                    msgs.iter()
+                        .filter_map(|m| serde_json::to_value(m).ok())
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+
+                if messages.is_empty() {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some("No messages to export. Start a conversation first.".to_string()),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                } else {
+                    match export_session_markdown(&self.cwd, &messages) {
+                        Ok(path) => {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!(
+                                        "Session exported to:\n  {}",
+                                        path.display()
+                                    )),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: None,
+                                },
+                            });
+                        }
+                        Err(e) => {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!("Failed to export session: {}", e)),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+            "/delete_session" => {
+                use std::fs;
+                use crate::services::session_storage::get_project_session_dir;
+
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                if parts.len() < 2 {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some("Usage: /delete_session <session-id>".to_string()),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: Some(true),
+                        },
+                    });
+                } else {
+                    let session_id = parts[1];
+                    let session_path = get_project_session_dir(&self.cwd).join(format!("{}.json", session_id));
+
+                    if !session_path.exists() {
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some(format!("Session not found: {}", session_id)),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: Some(true),
+                            },
+                        });
+                    } else {
+                        match fs::remove_file(&session_path) {
+                            Ok(_) => {
+                                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                    item: TranscriptItem {
+                                        role: "system".to_string(),
+                                        text: Some(format!("Session {} deleted.", session_id)),
+                                        tool_name: None,
+                                        tool_input: None,
+                                        is_error: None,
+                                    },
+                                });
+                            }
+                            Err(e) => {
+                                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                    item: TranscriptItem {
+                                        role: "system".to_string(),
+                                        text: Some(format!("Failed to delete session: {}", e)),
+                                        tool_name: None,
+                                        tool_input: None,
+                                        is_error: Some(true),
+                                    },
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            "/init" => {
+                use crate::config::default_settings::{initialize_defaults, initialize_project};
+
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                let mut results = Vec::new();
+
+                // Initialize global config if --global flag or no args
+                if parts.len() == 1 || parts.contains(&"--global") || parts.contains(&"-g") {
+                    match initialize_defaults() {
+                        Ok(msg) => results.push(msg),
+                        Err(e) => {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!("Error initializing global config: {}", e)),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Initialize project config if --project flag or no args
+                if parts.len() == 1 || parts.contains(&"--project") || parts.contains(&"-p") {
+                    match initialize_project(&self.cwd) {
+                        Ok(msg) => results.push(msg),
+                        Err(e) => {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!("Error initializing project: {}", e)),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Create CLAUDE.md if not exists
+                let claude_md_path = std::path::Path::new(&self.cwd).join("CLAUDE.md");
+                if !claude_md_path.exists() {
+                    let content = "# CLAUDE.md\n\nThis file provides guidance to Claude Code when working with code in this repository.\n";
+                    if let Err(e) = std::fs::write(&claude_md_path, content) {
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some(format!("Error creating CLAUDE.md: {}", e)),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: Some(true),
+                            },
+                        });
+                        return Ok(());
+                    }
+                    results.push(format!("Created: {}", claude_md_path.display()));
+                }
+
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some(results.join("\n\n")),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
+                });
+            }
+            "/version" => {
+                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                    item: TranscriptItem {
+                        role: "system".to_string(),
+                        text: Some("RustHarness v0.1.0".to_string()),
+                        tool_name: None,
+                        tool_input: None,
+                        is_error: None,
+                    },
+                });
             }
             _ => {
                 let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
