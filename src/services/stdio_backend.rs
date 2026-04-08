@@ -522,6 +522,37 @@ impl StdioBackend {
                     },
                 });
             }
+            "/skills" => {
+                use crate::skills::loader::load_skill_registry;
+                use std::path::Path;
+                let registry = load_skill_registry(Path::new(&self.cwd));
+                let skills = registry.list();
+                if skills.is_empty() {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some("No skills available. Add skill files to ~/.rust_harness/skills/".to_string()),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                } else {
+                    let lines: Vec<_> = skills
+                        .iter()
+                        .map(|s| format!("  - {}: {}", s.name, s.description))
+                        .collect();
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some(format!("Available skills:\n{}", lines.join("\n"))),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                }
+            }
             _ => {
                 let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                     item: TranscriptItem {
