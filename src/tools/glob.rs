@@ -131,6 +131,17 @@ fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
         }
     }
 
+    // Auto-detect Desktop directory if candidate is "Desktop" or "~/Desktop"
+    if candidate == "Desktop" || candidate.ends_with("/Desktop") {
+        if let Some(desktop_dir) = dirs::desktop_dir() {
+            return desktop_dir;
+        }
+        // Fallback to ~/Desktop if desktop_dir not available
+        if let Some(home_dir) = dirs::home_dir() {
+            return home_dir.join("Desktop");
+        }
+    }
+
     if path.is_absolute() {
         path
     } else {

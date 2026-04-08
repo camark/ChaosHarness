@@ -99,7 +99,10 @@
       "Bash(chmod +x test-tty.sh)",
       "Bash(chmod +x:*)",
       "Bash(../target/debug/rust_harness --stdio-backend)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(../target/debug/rust_harness --version)",
+      "Bash(pkill -f \"cargo build\")",
+      "Bash(grep:*)"
     ]
   }
 }

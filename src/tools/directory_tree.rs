@@ -54,6 +54,13 @@ impl DirectoryTreeTool {
                     }
                 }
 
+                // Use dirs::desktop_dir() for automatic OS-specific Desktop detection
+                if p == "Desktop" || p.ends_with("/Desktop") {
+                    if let Some(desktop_dir) = dirs::desktop_dir() {
+                        return desktop_dir;
+                    }
+                }
+
                 let path = Path::new(p);
                 if path.is_absolute() {
                     path.to_path_buf()
