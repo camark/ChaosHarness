@@ -11,29 +11,103 @@ src/
 │   ├── client.rs        # Anthropic API client with retry logic
 │   ├── errors.rs        # API error types
 │   └── usage.rs         # Token usage tracking
+├── commands/            # Slash command system
+│   ├── types.rs         # Command types
+│   ├── registry.rs      # Command registry and handlers
+│   └── mod.rs           # Module exports
 ├── config/              # Configuration
 │   ├── paths.rs         # Path resolution for config/data dirs
 │   └── settings.rs      # Settings model and loading
 ├── engine/              # Core engine
 │   ├── messages.rs      # Conversation message types
-│   └── query.rs         # Query engine for processing messages
+│   └── query.rs         # Query engine with tool-use loop
 ├── hooks/               # Extensible event handling
+│   ├── events.rs        # Hook event types
+│   ├── executor.rs      # Hook execution with timeout
+│   ├── registry.rs      # Hook registry
+│   └── builtins.rs      # Built-in hooks
 ├── mcp/                 # Model Context Protocol support
+│   ├── client.rs        # MCP client with stdio/sse transport
+│   ├── config.rs        # MCP server config loading
+│   └── types.rs         # MCP types and schemas
 ├── memory/              # Persistent context memory
+│   ├── manager.rs       # Memory manager
+│   └── types.rs         # Memory types
 ├── permissions/         # Permission checking
+│   ├── modes.rs         # Permission modes
+│   └── checker.rs       # Permission checker
 ├── plugins/             # Plugin system
-├── prompts/             # Prompt generation
+│   ├── loader.rs        # Plugin loader
+│   └── installer.rs     # Plugin installer
 ├── services/            # Background services
 │   ├── backend_server.rs # WebSocket server for React TUI
-│   ├── cron.rs          # Cron scheduler
-│   └── session_storage.rs # Session persistence
+│   ├── stdio_backend.rs  # Stdio backend with OHJSON protocol
+│   ├── session_storage.rs # Session persistence
+│   └── cron.rs          # Cron scheduler
 ├── skills/              # Skills system
-├── state/               # State management
+│   ├── loader.rs        # Skill loader from .md files
+│   └── types.rs         # Skill types
+├── tools/               # AI agent toolkit
+│   ├── base.rs          # Tool trait and registry
+│   ├── bash.rs          # Shell command execution
+│   ├── file_read.rs     # Read files
+│   ├── file_write.rs    # Write files
+│   ├── file_edit.rs     # Edit files
+│   ├── glob.rs          # File pattern matching
+│   ├── grep.rs          # Content search
+│   ├── web_fetch.rs     # Fetch URLs
+│   ├── web_search.rs    # Web search
+│   └── mcp.rs           # MCP tool integration
 └── ui/                  # User interface
     └── repl.rs          # REPL (Read-Eval-Print Loop)
 ```
 
 ## Features
+
+### Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/clear` | Clear conversation history |
+| `/exit` | Exit the REPL |
+| `/status` | Show session status |
+| `/usage` | Show token usage statistics |
+| `/skills` | List or show available skills |
+| `/plugin` | Manage plugins (list/install/uninstall/enable/disable) |
+| `/hooks` | Show configured hooks |
+| `/config` | Show or update configuration |
+| `/memory` | Manage project memory (list/show/add/remove) |
+| `/resume <id>` | Resume a previous session |
+| `/sessions` | List all saved sessions |
+| `/export` | Export current session to markdown |
+| `/delete_session <id>` | Delete a session |
+| `/init` | Initialize default configuration |
+| `/version` | Show version information |
+| `/permissions` | Change permission mode |
+| `/plan` | Toggle plan mode |
+
+### MCP (Model Context Protocol)
+
+MCP servers can be configured in `~/.rust_harness/settings.json`:
+
+```json
+{
+  "mcp_servers": {
+    "test-server": {
+      "name": "test-server",
+      "command": "node",
+      "args": ["/path/to/server.js"],
+      "transport": "stdio",
+      "enabled": true
+    }
+  }
+}
+```
+
+Supported transports:
+- **stdio**: Spawn a process and communicate via stdin/stdout
+- **sse**: Connect to a Server-Sent Events endpoint
 
 ### CLI Options
 
@@ -142,17 +216,36 @@ Environment variables:
 cargo build --release
 ```
 
-## Differences from Python Version
+## Implementation Status
 
-This is a skeleton implementation that provides:
-- Core CLI interface (same flags as Python version)
-- Basic API client with retry logic
-- Simple REPL interface
-- WebSocket backend for React TUI
+### Core Features
+- ✅ CLI with all flags (clap)
+- ✅ API client with retry logic (exponential backoff, 3 retries)
+- ✅ Query engine with tool-use loop
+- ✅ Tool registry and execution framework
+- ✅ Permission checker integration
+- ✅ 11+ core tools (bash, file I/O, search, web)
+- ✅ MCP client with stdio/sse transport
+- ✅ Auto-compaction for long conversations
+- ✅ Token usage tracking
+- ✅ WebSocket backend server (axum)
+- ✅ Stdio backend with OHJSON protocol
+- ✅ Configuration system with env overrides
+- ✅ Permission modes (Default/Plan/FullAuto)
+- ✅ Hooks system with 8 events
+- ✅ Slash commands (18 commands)
+- ✅ Skills loader from ~/.rust_harness/skills/
+- ✅ Plugin loader (claude-code compatible)
+- ✅ Memory manager with MEMORY.md persistence
+- ✅ Session storage and resume functionality
 
-Some advanced features from the Python version are stubbed or simplified:
-- Plugin system (basic structure only)
-- MCP support (configuration loading only)
-- Memory system (basic structure)
-- Skills system (basic structure)
-- Session storage (stub implementation)
+### Differences from Python Version
+
+This Rust implementation provides:
+- All core CLI flags and options from the Python version
+- Full API client with streaming and retry logic
+- Complete tool system with 11+ tools
+- MCP integration with stdio and SSE transports
+- Skills and plugins system
+- Session management and persistence
+- React TUI frontend support via WebSocket/Stdio backends
