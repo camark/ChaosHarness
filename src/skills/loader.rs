@@ -117,22 +117,29 @@ fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
         for entry in entries.flatten() {
             let dir_path = entry.path();
             if dir_path.is_dir() {
+                // Use directory name as the skill name
+                let dir_name = dir_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
                 // Try SKILL.md first (OpenHarness format)
                 let skill_file = dir_path.join("SKILL.md");
                 if skill_file.exists() {
-                    if let Ok(skill) = load_skill(&skill_file) {
+                    if let Ok(mut skill) = load_skill(&skill_file) {
+                        // Override name with directory name
+                        skill.name = dir_name.clone();
                         registry.register(skill);
                         continue;
                     }
                 }
 
                 // Try <dirname>.md (simple format)
-                if let Some(dir_name) = dir_path.file_name().and_then(|s| s.to_str()) {
-                    let simple_file = dir_path.join(format!("{}.md", dir_name));
-                    if simple_file.exists() && simple_file != skill_file {
-                        if let Ok(skill) = load_skill(&simple_file) {
-                            registry.register(skill);
-                        }
+                let simple_file = dir_path.join(format!("{}.md", dir_name));
+                if simple_file.exists() && simple_file != skill_file {
+                    if let Ok(skill) = load_skill(&simple_file) {
+                        registry.register(skill);
                     }
                 }
 
@@ -145,7 +152,9 @@ fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
                             .map(|s| s.eq_ignore_ascii_case("README.md"))
                             .unwrap_or(false);
                         if sub_path.extension().and_then(|s| s.to_str()) == Some("md") && !is_readme {
-                            if let Ok(skill) = load_skill(&sub_path) {
+                            if let Ok(mut skill) = load_skill(&sub_path) {
+                                // Override name with directory name
+                                skill.name = dir_name.clone();
                                 registry.register(skill);
                                 break; // Only load one skill per directory
                             }

@@ -147,6 +147,9 @@ impl StdioBackend {
     }
 
     pub async fn run(mut self) -> io::Result<()> {
+        // Initialize query engine first (including MCP connections)
+        self.init_query_engine().await?;
+
         let stdin = tokio::io::stdin();
         let mut reader = tokio::io::BufReader::new(stdin);
         let mut line = String::new();
@@ -158,7 +161,7 @@ impl StdioBackend {
                 state: self.get_initial_state(),
                 tasks: vec![],
                 commands: self.get_available_commands(),
-                mcp_servers: vec![],
+                mcp_servers: self.get_mcp_servers(),
                 bridge_sessions: vec![],
             })?;
         }
@@ -211,6 +214,7 @@ impl StdioBackend {
             "/skills".to_string(),
             "/plugin".to_string(),
             "/hooks".to_string(),
+            "/mcp".to_string(),
             "/config".to_string(),
             "/memory".to_string(),
             "/resume".to_string(),
@@ -222,6 +226,25 @@ impl StdioBackend {
             "/permissions".to_string(),
             "/plan".to_string(),
         ]
+    }
+
+    fn get_mcp_servers(&self) -> Vec<Value> {
+        use crate::mcp::config::load_mcp_server_configs;
+
+        let mcp_configs = load_mcp_server_configs(&self.settings);
+        mcp_configs
+            .iter()
+            .map(|(name, config)| {
+                serde_json::json!({
+                    "name": name,
+                    "state": if config.enabled { "connected" } else { "disconnected" },
+                    "transport": config.transport,
+                    "auth_configured": config.env.is_some(),
+                    "tool_count": 0,
+                    "resource_count": 0,
+                })
+            })
+            .collect()
     }
 
     fn send_event<W: Write>(
@@ -391,7 +414,7 @@ impl StdioBackend {
                 let state = self.get_initial_state();
                 let _ = self.send_event(stdout, BackendEvent::StateSnapshot {
                     state: state.clone(),
-                    mcp_servers: vec![],
+                    mcp_servers: self.get_mcp_servers(),
                     bridge_sessions: vec![],
                 });
                 // Also show status in transcript
@@ -663,91 +686,126 @@ impl StdioBackend {
                                     is_error: Some(true),
                                 },
                             });
-                        } else {
-                            let installer = SkillInstaller::new(&get_user_skills_dir());
-                            if args.starts_with("http") {
-                                // Install from GitHub URL
-                                let url = args.clone();
-                                let handle = tokio::runtime::Handle::current();
-                                match handle.block_on(installer.install_from_github(&url)) {
+                        } else if args.starts_with("http") {
+                            // Install from GitHub URL
+                            let url = args.clone();
+                            let skills_dir = get_user_skills_dir();
+                            let result = tokio::task::spawn_blocking(move || {
+                                tracing::info!("Installing skill from URL: {}", url);
+                                let installer = SkillInstaller::new(&skills_dir);
+                                tracing::info!("Created SkillInstaller for dir: {}", skills_dir);
+                                match installer.install_from_github(&url) {
                                     Ok(path) => {
-                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
-                                            item: TranscriptItem {
-                                                role: "system".to_string(),
-                                                text: Some(format!("Installed skill from URL: {}", path)),
-                                                tool_name: None,
-                                                tool_input: None,
-                                                is_error: None,
-                                            },
-                                        });
+                                        tracing::info!("Successfully installed skill to: {}", path);
+                                        Ok(path)
                                     }
                                     Err(e) => {
+                                        tracing::error!("Failed to install skill: {}", e);
+                                        Err(e)
+                                    }
+                                }
+                            })
+                            .await
+                            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;
+
+                            match result {
+                                Ok(path) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Installed skill from URL: {}", path)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: None,
+                                        },
+                                    });
+                                }
+                                Err(e) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Failed to install skill: {}", e)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                            }
+                        } else {
+                            // Search SkillsMP and install
+                            let query = args.clone();
+                            let skills_dir = get_user_skills_dir();
+                            let query_for_closure = query.clone();
+                            let skills_dir_for_closure = skills_dir.clone();
+                            let search_result = tokio::task::spawn_blocking(move || {
+                                let installer = SkillInstaller::new(&skills_dir_for_closure);
+                                installer.search(&query_for_closure)
+                            })
+                            .await
+                            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;
+
+                            match search_result {
+                                Ok(skills) => {
+                                    if skills.is_empty() {
                                         let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                                             item: TranscriptItem {
                                                 role: "system".to_string(),
-                                                text: Some(format!("Failed to install skill: {}", e)),
+                                                text: Some(format!("No skills found for: {}", query)),
                                                 tool_name: None,
                                                 tool_input: None,
                                                 is_error: Some(true),
                                             },
                                         });
+                                        return Ok(());
                                     }
-                                }
-                            } else {
-                                // Search and install from SkillsMP
-                                let query = args.clone();
-                                let handle = tokio::runtime::Handle::current();
-                                match handle.block_on(installer.search(&query)) {
-                                    Ok(skills) => {
-                                        if skills.is_empty() {
+                                    // Extract data before spawning new blocking task
+                                    let skill_url = skills[0].skill_url.clone();
+                                    let skill_name = skills[0].name.clone();
+                                    let skill_name_for_msg = skill_name.clone();
+                                    let skill_author = skills[0].author.clone();
+                                    let skills_dir_for_download = skills_dir.clone();
+                                    let download_result = tokio::task::spawn_blocking(move || {
+                                        let installer = SkillInstaller::new(&skills_dir_for_download);
+                                        installer.download_skill(&skill_url, Some(&skill_name))
+                                    })
+                                    .await
+                                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;
+                                    match download_result {
+                                        Ok(path) => {
                                             let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
                                                 item: TranscriptItem {
                                                     role: "system".to_string(),
-                                                    text: Some(format!("No skills found for: {}", args)),
+                                                    text: Some(format!("Installed skill '{}' from {}:\n  {}", skill_name_for_msg, skill_author, path)),
+                                                    tool_name: None,
+                                                    tool_input: None,
+                                                    is_error: None,
+                                                },
+                                            });
+                                        }
+                                        Err(e) => {
+                                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                                item: TranscriptItem {
+                                                    role: "system".to_string(),
+                                                    text: Some(format!("Failed to download skill: {}", e)),
                                                     tool_name: None,
                                                     tool_input: None,
                                                     is_error: Some(true),
                                                 },
                                             });
-                                        } else {
-                                            let first_skill = &skills[0];
-                                            match handle.block_on(installer.download_skill(&first_skill.skill_url, Some(&first_skill.name))) {
-                                                Ok(path) => {
-                                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
-                                                        item: TranscriptItem {
-                                                            role: "system".to_string(),
-                                                            text: Some(format!("Installed skill '{}' from {}:\n  {}", first_skill.name, first_skill.author, path)),
-                                                            tool_name: None,
-                                                            tool_input: None,
-                                                            is_error: None,
-                                                        },
-                                                    });
-                                                }
-                                                Err(e) => {
-                                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
-                                                        item: TranscriptItem {
-                                                            role: "system".to_string(),
-                                                            text: Some(format!("Failed to download skill: {}", e)),
-                                                            tool_name: None,
-                                                            tool_input: None,
-                                                            is_error: Some(true),
-                                                        },
-                                                    });
-                                                }
-                                            }
                                         }
                                     }
-                                    Err(e) => {
-                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
-                                            item: TranscriptItem {
-                                                role: "system".to_string(),
-                                                text: Some(format!("Search failed: {}", e)),
-                                                tool_name: None,
-                                                tool_input: None,
-                                                is_error: Some(true),
-                                            },
-                                        });
-                                    }
+                                }
+                                Err(e) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Search failed: {}", e)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
                                 }
                             }
                         }
@@ -765,8 +823,11 @@ impl StdioBackend {
                             });
                         } else {
                             let installer = SkillInstaller::new(&get_user_skills_dir());
-                            let handle = tokio::runtime::Handle::current();
-                            match handle.block_on(installer.search(&args)) {
+                            let query = args.clone();
+                            match tokio::task::spawn_blocking(move || installer.search(&query))
+                                .await
+                                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?
+                            {
                                 Ok(skills) => {
                                     if skills.is_empty() {
                                         let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
@@ -863,6 +924,131 @@ impl StdioBackend {
                         item: TranscriptItem {
                             role: "system".to_string(),
                             text: Some(format!("Configured hooks:\n{}", lines.join("\n"))),
+                            tool_name: None,
+                            tool_input: None,
+                            is_error: None,
+                        },
+                    });
+                }
+            }
+            cmd if cmd.starts_with("/mcp") => {
+                use crate::config::load_settings;
+                use crate::mcp::config::load_mcp_server_configs;
+
+                let args = cmd.strip_prefix("/mcp").unwrap_or("").trim();
+                let tokens: Vec<&str> = args.split_whitespace().collect();
+
+                if tokens.is_empty() || tokens[0] == "list" {
+                    let settings = load_settings(None).unwrap_or_default();
+                    let mcp_servers = load_mcp_server_configs(&settings);
+                    if mcp_servers.is_empty() {
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some("No MCP servers configured.\n\nAdd MCP servers in ~/.rust_harness/settings.json:\n```json\n{\n  \"mcp_servers\": {\n    \"test-server\": {\n      \"name\": \"test-server\",\n      \"command\": \"node\",\n      \"args\": [\"/path/to/server.js\"],\n      \"transport\": \"stdio\",\n      \"enabled\": true\n    }\n  }\n}\n```".to_string()),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: None,
+                            },
+                        });
+                    } else {
+                        let lines: Vec<_> = mcp_servers
+                            .iter()
+                            .map(|(name, config)| {
+                                let status = if config.enabled { "✓" } else { "✗" };
+                                let transport = &config.transport;
+                                let details = if transport == "stdio" {
+                                    format!("{}: {} {}",
+                                        config.command.as_deref().unwrap_or("unknown"),
+                                        config.args.as_ref().map(|a| a.join(" ")).unwrap_or_default(),
+                                        if let Some(env) = &config.env {
+                                            format!("({} env vars)", env.len())
+                                        } else {
+                                            String::new()
+                                        }
+                                    )
+                                } else if transport == "sse" {
+                                    config.url.clone().unwrap_or_default()
+                                } else {
+                                    transport.clone()
+                                };
+                                format!("  [{}] {} - {}", status, name, details)
+                            })
+                            .collect();
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some(format!("Configured MCP servers ({} total):\n{}", mcp_servers.len(), lines.join("\n"))),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: None,
+                            },
+                        });
+                    }
+                } else if tokens[0] == "query" {
+                    if tokens.len() < 2 {
+                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                            item: TranscriptItem {
+                                role: "system".to_string(),
+                                text: Some("Usage: /mcp query <server-name>\n\nQuery a specific MCP server for its capabilities and tools.".to_string()),
+                                tool_name: None,
+                                tool_input: None,
+                                is_error: None,
+                            },
+                        });
+                    } else {
+                        let server_name = tokens[1];
+                        let settings = load_settings(None).unwrap_or_default();
+                        let mcp_servers = load_mcp_server_configs(&settings);
+
+                        if let Some(config) = mcp_servers.get(server_name) {
+                            let mut info = Vec::new();
+                            info.push(format!("MCP Server: {}", server_name));
+                            info.push(format!("  Status: {}", if config.enabled { "Enabled" } else { "Disabled" }));
+                            info.push(format!("  Transport: {}", config.transport));
+
+                            if config.transport == "stdio" {
+                                if let Some(cmd) = &config.command {
+                                    info.push(format!("  Command: {}", cmd));
+                                }
+                                if let Some(args) = &config.args {
+                                    info.push(format!("  Args: {}", args.join(" ")));
+                                }
+                                if let Some(env) = &config.env {
+                                    info.push(format!("  Environment variables: {}", env.len()));
+                                }
+                            } else if config.transport == "sse" {
+                                if let Some(url) = &config.url {
+                                    info.push(format!("  URL: {}", url));
+                                }
+                            }
+
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(info.join("\n")),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: None,
+                                },
+                            });
+                        } else {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!("MCP server '{}' not found. Use /mcp list to see available servers.", server_name)),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: None,
+                                },
+                            });
+                        }
+                    }
+                } else {
+                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                        item: TranscriptItem {
+                            role: "system".to_string(),
+                            text: Some("Usage: /mcp [list|query <server-name>]".to_string()),
                             tool_name: None,
                             tool_input: None,
                             is_error: None,

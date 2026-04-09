@@ -81,6 +81,9 @@ src/
 | `/skills remove <name>` | Remove an installed skill |
 | `/plugin` | Manage plugins (list/install/uninstall/enable/disable) |
 | `/hooks` | Show configured hooks |
+| `/mcp` | List configured MCP servers |
+| `/mcp list` | List all configured MCP servers |
+| `/mcp query <server-name>` | Query a specific MCP server for its configuration details |
 | `/config` | Show or update configuration |
 | `/memory` | Manage project memory (list/show/add/remove) |
 | `/resume <id>` | Resume a previous session |

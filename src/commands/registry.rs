@@ -109,6 +109,12 @@ pub fn create_default_command_registry() -> CommandRegistry {
     });
 
     registry.register(SlashCommand {
+        name: "mcp",
+        description: "Manage MCP servers (list)",
+        handler: cmd_mcp,
+    });
+
+    registry.register(SlashCommand {
         name: "config",
         description: "Show or update configuration",
         handler: cmd_config,
@@ -255,21 +261,21 @@ fn cmd_skills(args: &str, ctx: &CommandContext) -> CommandResult {
 
             // Check if it's a GitHub URL
             if rest.starts_with("http") {
-                match tokio::runtime::Handle::current().block_on(installer.install_from_github(&rest)) {
+                match tokio::task::block_in_place(|| installer.install_from_github(&rest)) {
                     Ok(path) => CommandResult::message(format!("Installed skill from URL: {}", path)),
                     Err(e) => CommandResult::message(format!("Failed to install skill: {}", e)),
                 }
             } else {
                 // Search and install from SkillsMP (via GitHub)
                 let search_query = rest.clone();
-                match tokio::runtime::Handle::current().block_on(installer.search(&search_query)) {
+                match tokio::task::block_in_place(|| installer.search(&search_query)) {
                     Ok(skills) => {
                         if skills.is_empty() {
                             CommandResult::message(format!("No skills found for: {}", rest))
                         } else {
                             // Install the first result
                             let first_skill = &skills[0];
-                            match tokio::runtime::Handle::current().block_on(installer.download_skill(&first_skill.skill_url, Some(&first_skill.name))) {
+                            match tokio::task::block_in_place(|| installer.download_skill(&first_skill.skill_url, Some(&first_skill.name))) {
                                 Ok(path) => CommandResult::message(format!("Installed skill '{}' from {}:\n  {}", first_skill.name, first_skill.author, path)),
                                 Err(e) => CommandResult::message(format!("Failed to download skill: {}", e)),
                             }
@@ -285,7 +291,7 @@ fn cmd_skills(args: &str, ctx: &CommandContext) -> CommandResult {
                 return CommandResult::message("Usage: /skills search <query>");
             }
             let installer = SkillInstaller::new(&get_user_skills_dir());
-            match tokio::runtime::Handle::current().block_on(installer.search(&rest)) {
+            match tokio::task::block_in_place(|| installer.search(&rest)) {
                 Ok(skills) => {
                     if skills.is_empty() {
                         CommandResult::message(format!("No skills found for: {}", rest))
@@ -377,6 +383,80 @@ fn cmd_hooks(_args: &str, ctx: &CommandContext) -> CommandResult {
         CommandResult::message(format!("Configured hooks:\n{}", lines.join("\n")))
     } else {
         CommandResult::message("No hooks configured.")
+    }
+}
+
+fn cmd_mcp(args: &str, ctx: &CommandContext) -> CommandResult {
+    use crate::mcp::config::load_mcp_server_configs;
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+
+    if tokens.is_empty() || tokens[0] == "list" {
+        let mcp_servers = load_mcp_server_configs(ctx.settings);
+        if mcp_servers.is_empty() {
+            return CommandResult::message("No MCP servers configured.\n\nAdd MCP servers in ~/.rust_harness/settings.json:\n```json\n{\n  \"mcp_servers\": {\n    \"test-server\": {\n      \"name\": \"test-server\",\n      \"command\": \"node\",\n      \"args\": [\"/path/to/server.js\"],\n      \"transport\": \"stdio\",\n      \"enabled\": true\n    }\n  }\n}\n```");
+        }
+        let lines: Vec<_> = mcp_servers
+            .iter()
+            .map(|(name, config)| {
+                let status = if config.enabled { "✓" } else { "✗" };
+                let transport = &config.transport;
+                let details = if transport == "stdio" {
+                    format!("{}: {} {}",
+                        config.command.as_deref().unwrap_or("unknown"),
+                        config.args.as_ref().map(|a| a.join(" ")).unwrap_or_default(),
+                        if let Some(env) = &config.env {
+                            format!("({} env vars)", env.len())
+                        } else {
+                            String::new()
+                        }
+                    )
+                } else if transport == "sse" {
+                    config.url.clone().unwrap_or_default()
+                } else {
+                    transport.clone()
+                };
+                format!("  [{}] {} - {}", status, name, details)
+            })
+            .collect();
+        CommandResult::message(format!("Configured MCP servers ({} total):\n{}", mcp_servers.len(), lines.join("\n")))
+    } else if tokens[0] == "query" {
+        if tokens.len() < 2 {
+            return CommandResult::message("Usage: /mcp query <server-name>\n\nQuery a specific MCP server for its capabilities and tools.");
+        }
+        let server_name = tokens[1];
+        let mcp_servers = load_mcp_server_configs(ctx.settings);
+
+        if let Some(config) = mcp_servers.get(server_name) {
+            let mut info = Vec::new();
+            info.push(format!("MCP Server: {}", server_name));
+            info.push(format!("  Status: {}", if config.enabled { "Enabled" } else { "Disabled" }));
+            info.push(format!("  Transport: {}", config.transport));
+
+            if config.transport == "stdio" {
+                if let Some(cmd) = &config.command {
+                    info.push(format!("  Command: {}", cmd));
+                }
+                if let Some(args) = &config.args {
+                    info.push(format!("  Args: {}", args.join(" ")));
+                }
+                if let Some(env) = &config.env {
+                    info.push(format!("  Environment variables: {}", env.len()));
+                }
+            } else if config.transport == "sse" {
+                if let Some(url) = &config.url {
+                    info.push(format!("  URL: {}", url));
+                }
+            }
+
+            info.push(String::new());
+            info.push("Note: For live tool/resource counts, connect to the server.".to_string());
+            CommandResult::message(info.join("\n"))
+        } else {
+            CommandResult::message(format!("MCP server '{}' not found. Use /mcp list to see available servers.", server_name))
+        }
+    } else {
+        CommandResult::message("Usage: /mcp [list|query <server-name>]")
     }
 }
 
