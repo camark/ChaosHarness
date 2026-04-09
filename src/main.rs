@@ -19,6 +19,7 @@ mod state;
 mod tools;
 mod ui;
 mod tui_frontend;
+mod acp;
 
 pub use ui::repl;
 
@@ -128,6 +129,10 @@ pub struct Args {
     /// Use native TUI frontend (ratatui, better Windows support)
     #[arg(long)]
     tui: bool,
+
+    /// Run ACP server on specified port
+    #[arg(long)]
+    acp_server: Option<u16>,
 }
 
 #[tokio::main]
@@ -171,6 +176,13 @@ async fn main() -> Result<()> {
     if args.tui {
         return tui_frontend::run_tui_frontend()
             .map_err(|e| anyhow::anyhow!("TUI frontend error: {}", e));
+    }
+
+    // Handle --acp-server mode
+    if let Some(port) = args.acp_server {
+        return acp::server::run_acp_server(port)
+            .await
+            .map_err(|e| anyhow::anyhow!("ACP server error: {}", e));
     }
 
     // Handle --continue and --resume flags

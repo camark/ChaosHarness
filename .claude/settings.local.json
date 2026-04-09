@@ -102,7 +102,11 @@
       "Bash(git push:*)",
       "Bash(../target/debug/rust_harness --version)",
       "Bash(pkill -f \"cargo build\")",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:agentcommunicationprotocol.dev)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:a2a.plus)",
+      "Bash(timeout 2 ./target/release/rust_harness --acp-server 8080)"
     ]
   }
 }

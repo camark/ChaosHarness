@@ -109,6 +109,26 @@ Supported transports:
 - **stdio**: Spawn a process and communicate via stdin/stdout
 - **sse**: Connect to a Server-Sent Events endpoint
 
+### ACP (Agent Communication Protocol)
+
+RustHarness 支持 ACP 协议，用于 AI 代理间的互操作通信。
+
+**启动 ACP 服务器：**
+
+```bash
+cargo run -- --acp-server 8080
+```
+
+**端点：**
+- `GET /.well-known/agent.json` - AgentCard 发现
+- `GET /acp` - AgentCard 信息
+- `POST /tasks` - 创建任务
+- `GET /tasks/{id}` - 获取任务状态
+- `POST /tasks/{id}/send` - 发送消息
+- `GET /tasks/{id}/artifacts` - 获取任务产出物
+
+详见 [ACP.md](ACP.md) 完整文档。
+
 ### CLI Options
 
 - `-m, --model <MODEL>` - Model alias or full model ID
