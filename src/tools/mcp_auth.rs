@@ -68,7 +68,7 @@ impl Tool for McpAuthTool {
 
         let key = input["key"].as_str();
 
-        let mut settings = load_settings(None).map_err(|e| anyhow::anyhow!("Failed to load settings: {}", e))?;
+        let settings = load_settings(None).map_err(|e| anyhow::anyhow!("Failed to load settings: {}", e))?;
 
         // Check if server exists in config
         if !settings.mcp_servers.contains_key(server_name) {

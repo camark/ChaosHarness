@@ -48,6 +48,8 @@ impl SkillInstaller {
     pub fn new(skills_dir: &str) -> Self {
         let client = Client::builder()
             .user_agent("RustHarness/0.1.0")
+            .timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::limited(5))
             .build()
             .expect("Failed to create HTTP client");
 
@@ -155,8 +157,6 @@ impl SkillInstaller {
     /// Install a skill from GitHub URL (synchronous version)
     /// Supports both file URLs (/blob/) and directory URLs (/tree/)
     pub fn install_from_github(&self, github_url: &str) -> Result<String> {
-        tracing::info!("install_from_github: Starting with URL: {}", github_url);
-
         // Determine URL type: /blob/ for files, /tree/ for directories
         let url_type = if github_url.contains("/blob/") {
             "blob"
@@ -165,7 +165,6 @@ impl SkillInstaller {
         } else {
             bail!("Invalid GitHub URL format. Expected: https://github.com/owner/repo/blob/path/file.md or https://github.com/owner/repo/tree/path/to/dir");
         };
-        tracing::info!("install_from_github: URL type = {}", url_type);
 
         // Parse GitHub URL to get repo and path info
         let delimiter = format!("/{}/", url_type);
@@ -173,7 +172,6 @@ impl SkillInstaller {
         if parts.len() != 2 {
             bail!("Invalid GitHub URL format");
         }
-        tracing::info!("install_from_github: Parsed URL parts OK");
 
         let repo_parts: Vec<&str> = parts[0].trim_end_matches('/').split('/').collect();
         if repo_parts.len() < 2 {
@@ -182,13 +180,12 @@ impl SkillInstaller {
 
         let owner = repo_parts[repo_parts.len() - 2];
         let repo = repo_parts[repo_parts.len() - 1];
-        tracing::info!("install_from_github: owner={}, repo={}", owner, repo);
 
         // path_after_type includes the branch name: branch/path/to/...
         let path_after_type = parts[1];
 
         // Split path into components
-        let mut path_parts: Vec<&str> = path_after_type.split('/').collect();
+        let path_parts: Vec<&str> = path_after_type.split('/').collect();
         if path_parts.is_empty() {
             bail!("Invalid path in GitHub URL");
         }
@@ -206,7 +203,6 @@ impl SkillInstaller {
             } else {
                 "".to_string()
             };
-            tracing::info!("install_from_github: dir_path={}", dir_path);
 
             // Skill name is the last component of the directory path
             skill_name = if !dir_path.is_empty() {
@@ -214,7 +210,6 @@ impl SkillInstaller {
             } else {
                 repo.to_string()
             };
-            tracing::info!("install_from_github: skill_name={}", skill_name);
         } else {
             // File URL (/blob/): extract directory from file path
             let file_name = path_parts.last().unwrap_or(&"SKILL.md");
@@ -239,7 +234,6 @@ impl SkillInstaller {
         } else {
             format!("https://api.github.com/repos/{}/{}/contents/{}", owner, repo, dir_path)
         };
-        tracing::info!("install_from_github: Fetching directory from: {}", api_url);
 
         let request = self.client.get(&api_url);
         let request = if let Ok(token) = std::env::var("GITHUB_TOKEN") {
@@ -248,24 +242,19 @@ impl SkillInstaller {
             request
         };
 
-        tracing::info!("install_from_github: Sending API request...");
         let response = request
             .send()
             .map_err(|e| anyhow!("Failed to fetch directory listing: {}", e))?;
-        tracing::info!("install_from_github: API response status = {}", response.status());
 
         if !response.status().is_success() {
             bail!("GitHub API request failed: {}", response.status());
         }
 
-        tracing::info!("install_from_github: Parsing JSON response...");
         let contents: Vec<GitHubContent> = response.json()
             .map_err(|e| anyhow!("Failed to parse directory listing: {}", e))?;
-        tracing::info!("install_from_github: Parsed {} items from directory listing", contents.len());
 
         // Create skill directory in skills directory
         let skill_dir = Path::new(&self.skills_dir).join(skill_name);
-        tracing::info!("install_from_github: Creating skill directory: {:?}", skill_dir);
         fs::create_dir_all(&skill_dir)
             .map_err(|e| anyhow!("Failed to create skill directory: {}", e))?;
 
@@ -273,10 +262,8 @@ impl SkillInstaller {
         let mut downloaded_files = Vec::new();
         let mut main_skill_path: Option<String> = None;
 
-        tracing::info!("install_from_github: Starting to download {} files", contents.iter().filter(|c| c.file_type == "file").count());
         for item in contents {
             if item.file_type == "file" {
-                tracing::info!("install_from_github: Downloading file: {}", item.name);
                 // Determine branch (try main first, then master)
                 let download_url = if let Some(url) = item.download_url {
                     url
@@ -287,7 +274,6 @@ impl SkillInstaller {
                         owner, repo, item.path
                     )
                 };
-                tracing::info!("install_from_github: Download URL: {}", download_url);
 
                 // Try to download the file
                 let content = match self.download_from_url(&download_url) {
@@ -298,11 +284,9 @@ impl SkillInstaller {
                             "https://raw.githubusercontent.com/{}/{}/master/{}",
                             owner, repo, item.path
                         );
-                        tracing::info!("install_from_github: Trying master branch: {}", master_url);
                         self.download_from_url(&master_url)?
                     }
                 };
-                tracing::info!("install_from_github: Downloaded {} bytes", content.len());
 
                 // Determine local file path
                 let file_name = item.name;

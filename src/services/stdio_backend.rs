@@ -691,19 +691,8 @@ impl StdioBackend {
                             let url = args.clone();
                             let skills_dir = get_user_skills_dir();
                             let result = tokio::task::spawn_blocking(move || {
-                                tracing::info!("Installing skill from URL: {}", url);
                                 let installer = SkillInstaller::new(&skills_dir);
-                                tracing::info!("Created SkillInstaller for dir: {}", skills_dir);
-                                match installer.install_from_github(&url) {
-                                    Ok(path) => {
-                                        tracing::info!("Successfully installed skill to: {}", path);
-                                        Ok(path)
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Failed to install skill: {}", e);
-                                        Err(e)
-                                    }
-                                }
+                                installer.install_from_github(&url)
                             })
                             .await
                             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;

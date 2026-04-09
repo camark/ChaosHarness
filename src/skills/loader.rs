@@ -99,11 +99,12 @@ pub fn load_skill_registry(cwd: &Path) -> SkillRegistry {
 }
 
 fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
-    // First, try to load .md files directly in the skills directory
+    // First, try to load .md and .skill files directly in the skills directory
     if let Ok(entries) = fs::read_dir(skills_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("md") {
+            let ext = path.extension().and_then(|s| s.to_str());
+            if ext == Some("md") || ext == Some("skill") {
                 if let Ok(skill) = load_skill(&path) {
                     registry.register(skill);
                 }
@@ -112,7 +113,7 @@ fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
     }
 
     // Second, try to load skills from subdirectories
-    // Support both SKILL.md and <dirname>.md formats
+    // Support both SKILL.md, <dirname>.md, and <dirname>.skill formats
     if let Ok(entries) = fs::read_dir(skills_dir) {
         for entry in entries.flatten() {
             let dir_path = entry.path();
@@ -135,6 +136,17 @@ fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
                     }
                 }
 
+                // Try <dirname>.skill (RustHarness format)
+                let skill_file = dir_path.join(format!("{}.skill", dir_name));
+                if skill_file.exists() {
+                    if let Ok(mut skill) = load_skill(&skill_file) {
+                        // Override name with directory name
+                        skill.name = dir_name.clone();
+                        registry.register(skill);
+                        continue;
+                    }
+                }
+
                 // Try <dirname>.md (simple format)
                 let simple_file = dir_path.join(format!("{}.md", dir_name));
                 if simple_file.exists() && simple_file != skill_file {
@@ -143,15 +155,16 @@ fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
                     }
                 }
 
-                // Try any .md file in the directory as fallback
+                // Try any .md or .skill file in the directory as fallback
                 if let Ok(sub_entries) = fs::read_dir(&dir_path) {
                     for sub_entry in sub_entries.flatten() {
                         let sub_path = sub_entry.path();
+                        let ext = sub_path.extension().and_then(|s| s.to_str());
                         let is_readme = sub_path.file_name()
                             .and_then(|s| s.to_str())
                             .map(|s| s.eq_ignore_ascii_case("README.md"))
                             .unwrap_or(false);
-                        if sub_path.extension().and_then(|s| s.to_str()) == Some("md") && !is_readme {
+                        if (ext == Some("md") || ext == Some("skill")) && !is_readme {
                             if let Ok(mut skill) = load_skill(&sub_path) {
                                 // Override name with directory name
                                 skill.name = dir_name.clone();
