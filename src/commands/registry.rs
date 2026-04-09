@@ -184,25 +184,130 @@ fn cmd_usage(_args: &str, _ctx: &CommandContext) -> CommandResult {
 }
 
 fn cmd_skills(args: &str, ctx: &CommandContext) -> CommandResult {
-    use crate::skills::loader::load_skill_registry;
+    use crate::skills::{loader::load_skill_registry, installer::{SkillInstaller, get_user_skills_dir}};
     use std::path::Path;
 
-    let registry = load_skill_registry(Path::new(&ctx.cwd));
+    let tokens: Vec<&str> = args.split_whitespace().collect();
 
-    if args.is_empty() {
+    // No arguments - list all skills
+    if tokens.is_empty() {
+        let registry = load_skill_registry(Path::new(&ctx.cwd));
         let skills = registry.list();
         if skills.is_empty() {
-            return CommandResult::message("No skills available.");
+            return CommandResult::message("No skills available. Use /skills install <name> to install from SkillsMP.");
         }
         let lines: Vec<_> = skills
             .iter()
             .map(|s| format!("  {}: {}", s.name, s.description))
             .collect();
-        CommandResult::message(format!("Available skills:\n{}", lines.join("\n")))
-    } else {
-        match registry.get(args) {
-            Some(skill) => CommandResult::message(skill.content.clone()),
-            None => CommandResult::message(format!("Skill not found: {}", args)),
+        return CommandResult::message(format!("Available skills:\n{}", lines.join("\n")));
+    }
+
+    // Parse subcommand
+    let subcommand = tokens[0];
+    let rest = if tokens.len() > 1 { tokens[1..].join(" ") } else { String::new() };
+
+    match subcommand {
+        "list" => {
+            // /skills list - list all installed skills
+            let registry = load_skill_registry(Path::new(&ctx.cwd));
+            let skills = registry.list();
+            if skills.is_empty() {
+                CommandResult::message("No skills installed.")
+            } else {
+                let lines: Vec<_> = skills
+                    .iter()
+                    .map(|s| format!("  {}: {}", s.name, s.description))
+                    .collect();
+                CommandResult::message(format!("Installed skills ({} total):\n{}", skills.len(), lines.join("\n")))
+            }
+        }
+        "show" | "view" => {
+            // /skills show <name> - show skill content
+            if rest.is_empty() {
+                return CommandResult::message("Usage: /skills show <name>");
+            }
+            let registry = load_skill_registry(Path::new(&ctx.cwd));
+            match registry.get(&rest) {
+                Some(skill) => CommandResult::message(skill.content.clone()),
+                None => CommandResult::message(format!("Skill not found: {}", rest)),
+            }
+        }
+        "remove" | "delete" => {
+            // /skills remove <name> - remove a skill
+            if rest.is_empty() {
+                return CommandResult::message("Usage: /skills remove <name>");
+            }
+            let installer = SkillInstaller::new(&get_user_skills_dir());
+            match installer.remove_skill(&rest) {
+                Ok(true) => CommandResult::message(format!("Removed skill: {}", rest)),
+                Ok(false) => CommandResult::message(format!("Skill not found: {}", rest)),
+                Err(e) => CommandResult::message(format!("Failed to remove skill: {}", e)),
+            }
+        }
+        "install" => {
+            // /skills install <name|url> - install a skill from SkillsMP or GitHub
+            if rest.is_empty() {
+                return CommandResult::message("Usage: /skills install <name|github-url>\n\nExamples:\n  /skills install claude-api\n  /skills install https://github.com/user/repo/blob/main/skill.md");
+            }
+
+            let installer = SkillInstaller::new(&get_user_skills_dir());
+
+            // Check if it's a GitHub URL
+            if rest.starts_with("http") {
+                match tokio::runtime::Handle::current().block_on(installer.install_from_github(&rest)) {
+                    Ok(path) => CommandResult::message(format!("Installed skill from URL: {}", path)),
+                    Err(e) => CommandResult::message(format!("Failed to install skill: {}", e)),
+                }
+            } else {
+                // Search and install from SkillsMP (via GitHub)
+                let search_query = rest.clone();
+                match tokio::runtime::Handle::current().block_on(installer.search(&search_query)) {
+                    Ok(skills) => {
+                        if skills.is_empty() {
+                            CommandResult::message(format!("No skills found for: {}", rest))
+                        } else {
+                            // Install the first result
+                            let first_skill = &skills[0];
+                            match tokio::runtime::Handle::current().block_on(installer.download_skill(&first_skill.skill_url, Some(&first_skill.name))) {
+                                Ok(path) => CommandResult::message(format!("Installed skill '{}' from {}:\n  {}", first_skill.name, first_skill.author, path)),
+                                Err(e) => CommandResult::message(format!("Failed to download skill: {}", e)),
+                            }
+                        }
+                    }
+                    Err(e) => CommandResult::message(format!("Search failed: {}", e)),
+                }
+            }
+        }
+        "search" => {
+            // /skills search <query> - search SkillsMP
+            if rest.is_empty() {
+                return CommandResult::message("Usage: /skills search <query>");
+            }
+            let installer = SkillInstaller::new(&get_user_skills_dir());
+            match tokio::runtime::Handle::current().block_on(installer.search(&rest)) {
+                Ok(skills) => {
+                    if skills.is_empty() {
+                        CommandResult::message(format!("No skills found for: {}", rest))
+                    } else {
+                        let lines: Vec<_> = skills
+                            .iter()
+                            .take(10)
+                            .map(|s| format!("  {} by {} - {}", s.name, s.author, s.description))
+                            .collect();
+                        CommandResult::message(format!("Found {} skills for '{}':\n{}", skills.len(), rest, lines.join("\n")))
+                    }
+                }
+                Err(e) => CommandResult::message(format!("Search failed: {}", e)),
+            }
+        }
+        _ => {
+            // Unknown subcommand - try to show skill content as fallback
+            let registry = load_skill_registry(Path::new(&ctx.cwd));
+            match registry.get(args) {
+                Some(skill) => CommandResult::message(skill.content.clone()),
+                None => CommandResult::message("Usage: /skills <list|show <name>|remove <name>|install <name|url>|search <query>>"),
+            }
         }
     }
 }

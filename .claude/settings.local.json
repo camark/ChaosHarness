@@ -106,7 +106,8 @@
       "WebFetch(domain:agentcommunicationprotocol.dev)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:a2a.plus)",
-      "Bash(timeout 2 ./target/release/rust_harness --acp-server 8080)"
+      "Bash(timeout 2 ./target/release/rust_harness --acp-server 8080)",
+      "WebFetch(domain:skillsmp.com)"
     ]
   }
 }

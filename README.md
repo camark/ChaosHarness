@@ -74,6 +74,11 @@ src/
 | `/status` | Show session status |
 | `/usage` | Show token usage statistics |
 | `/skills` | List or show available skills |
+| `/skills list` | List all installed skills |
+| `/skills show <name>` | Show skill content |
+| `/skills install <name|url>` | Install skill from SkillsMP or GitHub URL |
+| `/skills search <query>` | Search SkillsMP for skills |
+| `/skills remove <name>` | Remove an installed skill |
 | `/plugin` | Manage plugins (list/install/uninstall/enable/disable) |
 | `/hooks` | Show configured hooks |
 | `/config` | Show or update configuration |

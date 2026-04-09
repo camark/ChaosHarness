@@ -526,34 +526,317 @@ impl StdioBackend {
                 });
             }
             "/skills" => {
-                use crate::skills::loader::load_skill_registry;
+                use crate::skills::{loader::load_skill_registry, installer::{SkillInstaller, get_user_skills_dir}};
                 use std::path::Path;
-                let registry = load_skill_registry(Path::new(&self.cwd));
-                let skills = registry.list();
-                if skills.is_empty() {
-                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
-                        item: TranscriptItem {
-                            role: "system".to_string(),
-                            text: Some("No skills available. Add skill files to ~/.rust_harness/skills/".to_string()),
-                            tool_name: None,
-                            tool_input: None,
-                            is_error: None,
-                        },
-                    });
-                } else {
-                    let lines: Vec<_> = skills
-                        .iter()
-                        .map(|s| format!("  - {}: {}", s.name, s.description))
-                        .collect();
-                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
-                        item: TranscriptItem {
-                            role: "system".to_string(),
-                            text: Some(format!("Available skills:\n{}", lines.join("\n"))),
-                            tool_name: None,
-                            tool_input: None,
-                            is_error: None,
-                        },
-                    });
+
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                let subcommand = parts.get(1).map(|s| *s).unwrap_or("list");
+                let args = if parts.len() > 2 { parts[2..].join(" ") } else { String::new() };
+
+                match subcommand {
+                    "list" => {
+                        let registry = load_skill_registry(Path::new(&self.cwd));
+                        let skills = registry.list();
+                        if skills.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("No skills installed. Use /skills install <name> to install from SkillsMP.".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: None,
+                                },
+                            });
+                        } else {
+                            let lines: Vec<_> = skills
+                                .iter()
+                                .map(|s| format!("  - {}: {}", s.name, s.description))
+                                .collect();
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some(format!("Installed skills ({} total):\n{}", skills.len(), lines.join("\n"))),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: None,
+                                },
+                            });
+                        }
+                    }
+                    "show" | "view" => {
+                        if args.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /skills show <name>".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        } else {
+                            let registry = load_skill_registry(Path::new(&self.cwd));
+                            match registry.get(&args) {
+                                Some(skill) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(skill.content.clone()),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: None,
+                                        },
+                                    });
+                                }
+                                None => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Skill not found: {}", args)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    "remove" | "delete" => {
+                        if args.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /skills remove <name>".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        } else {
+                            let installer = SkillInstaller::new(&get_user_skills_dir());
+                            match installer.remove_skill(&args) {
+                                Ok(true) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Removed skill: {}", args)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: None,
+                                        },
+                                    });
+                                }
+                                Ok(false) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Skill not found: {}", args)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                                Err(e) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Failed to remove skill: {}", e)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    "install" => {
+                        if args.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /skills install <name|github-url>".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        } else {
+                            let installer = SkillInstaller::new(&get_user_skills_dir());
+                            if args.starts_with("http") {
+                                // Install from GitHub URL
+                                let url = args.clone();
+                                let handle = tokio::runtime::Handle::current();
+                                match handle.block_on(installer.install_from_github(&url)) {
+                                    Ok(path) => {
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!("Installed skill from URL: {}", path)),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: None,
+                                            },
+                                        });
+                                    }
+                                    Err(e) => {
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!("Failed to install skill: {}", e)),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: Some(true),
+                                            },
+                                        });
+                                    }
+                                }
+                            } else {
+                                // Search and install from SkillsMP
+                                let query = args.clone();
+                                let handle = tokio::runtime::Handle::current();
+                                match handle.block_on(installer.search(&query)) {
+                                    Ok(skills) => {
+                                        if skills.is_empty() {
+                                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                                item: TranscriptItem {
+                                                    role: "system".to_string(),
+                                                    text: Some(format!("No skills found for: {}", args)),
+                                                    tool_name: None,
+                                                    tool_input: None,
+                                                    is_error: Some(true),
+                                                },
+                                            });
+                                        } else {
+                                            let first_skill = &skills[0];
+                                            match handle.block_on(installer.download_skill(&first_skill.skill_url, Some(&first_skill.name))) {
+                                                Ok(path) => {
+                                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                                        item: TranscriptItem {
+                                                            role: "system".to_string(),
+                                                            text: Some(format!("Installed skill '{}' from {}:\n  {}", first_skill.name, first_skill.author, path)),
+                                                            tool_name: None,
+                                                            tool_input: None,
+                                                            is_error: None,
+                                                        },
+                                                    });
+                                                }
+                                                Err(e) => {
+                                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                                        item: TranscriptItem {
+                                                            role: "system".to_string(),
+                                                            text: Some(format!("Failed to download skill: {}", e)),
+                                                            tool_name: None,
+                                                            tool_input: None,
+                                                            is_error: Some(true),
+                                                        },
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!("Search failed: {}", e)),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: Some(true),
+                                            },
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "search" => {
+                        if args.is_empty() {
+                            let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                item: TranscriptItem {
+                                    role: "system".to_string(),
+                                    text: Some("Usage: /skills search <query>".to_string()),
+                                    tool_name: None,
+                                    tool_input: None,
+                                    is_error: Some(true),
+                                },
+                            });
+                        } else {
+                            let installer = SkillInstaller::new(&get_user_skills_dir());
+                            let handle = tokio::runtime::Handle::current();
+                            match handle.block_on(installer.search(&args)) {
+                                Ok(skills) => {
+                                    if skills.is_empty() {
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!("No skills found for: {}", args)),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: Some(true),
+                                            },
+                                        });
+                                    } else {
+                                        let lines: Vec<_> = skills
+                                            .iter()
+                                            .take(10)
+                                            .map(|s| format!("  - {} by {}: {}", s.name, s.author, s.description))
+                                            .collect();
+                                        let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                            item: TranscriptItem {
+                                                role: "system".to_string(),
+                                                text: Some(format!("Found {} skills for '{}':\n{}", skills.len(), args, lines.join("\n"))),
+                                                tool_name: None,
+                                                tool_input: None,
+                                                is_error: None,
+                                            },
+                                        });
+                                    }
+                                }
+                                Err(e) => {
+                                    let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                        item: TranscriptItem {
+                                            role: "system".to_string(),
+                                            text: Some(format!("Search failed: {}", e)),
+                                            tool_name: None,
+                                            tool_input: None,
+                                            is_error: Some(true),
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        // Fallback - show skill content or list all
+                        let registry = load_skill_registry(Path::new(&self.cwd));
+                        match registry.get(subcommand) {
+                            Some(skill) => {
+                                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                    item: TranscriptItem {
+                                        role: "system".to_string(),
+                                        text: Some(skill.content.clone()),
+                                        tool_name: None,
+                                        tool_input: None,
+                                        is_error: None,
+                                    },
+                                });
+                            }
+                            None => {
+                                let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
+                                    item: TranscriptItem {
+                                        role: "system".to_string(),
+                                        text: Some("Usage: /skills <list|show <name>|remove <name>|install <name|url>|search <query>>".to_string()),
+                                        tool_name: None,
+                                        tool_input: None,
+                                        is_error: Some(true),
+                                    },
+                                });
+                            }
+                        }
+                    }
                 }
             }
             "/hooks" => {
