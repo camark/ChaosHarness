@@ -525,7 +525,7 @@ impl StdioBackend {
                     },
                 });
             }
-            "/skills" => {
+            cmd if cmd.starts_with("/skills") => {
                 use crate::skills::{loader::load_skill_registry, installer::{SkillInstaller, get_user_skills_dir}};
                 use std::path::Path;
 
