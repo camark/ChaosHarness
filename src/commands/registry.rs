@@ -1,5 +1,7 @@
 //! Slash command registry
 
+#![allow(dead_code)]
+
 use crate::commands::types::{CommandContext, CommandResult, SlashCommand};
 use crate::memory::MemoryManager;
 use std::collections::HashMap;

@@ -6,4 +6,4 @@ pub mod types;
 pub mod installer;
 
 // Re-exports for external use
-pub use installer::{SkillInstaller, get_user_skills_dir};
+// Note: SkillInstaller and get_user_skills_dir are kept for future external use

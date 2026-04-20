@@ -1,5 +1,7 @@
 //! Anthropic API client with tool support and OpenAI-compatible API support
 
+#![allow(dead_code)]
+
 use crate::api::errors::ApiError;
 use crate::engine::messages::{ConversationMessage, MessageContent, ToolUseData};
 use anyhow::Result;

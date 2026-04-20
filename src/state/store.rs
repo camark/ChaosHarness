@@ -1,5 +1,7 @@
 //! State store
 
+#![allow(dead_code)]
+
 use crate::state::app_state::AppState;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

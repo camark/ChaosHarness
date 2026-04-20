@@ -194,6 +194,7 @@ pub struct ResourceContent {
 /// Log level for MCP logging
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum LogLevel {
     Debug,
     Info,

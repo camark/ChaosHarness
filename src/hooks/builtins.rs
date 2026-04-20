@@ -1,5 +1,7 @@
 //! Built-in hooks for common functionality
 
+#![allow(dead_code)]
+
 use crate::hooks::schemas::HookDefinition;
 use crate::hooks::types::HookContext;
 use std::collections::HashSet;

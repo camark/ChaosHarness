@@ -23,11 +23,11 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::{CorsLayer, Any};
-use tracing::info;
+use tower_http::cors::{Any, CorsLayer};
 
 /// ACP Server state
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct AcpServerState {
     /// AgentCard for this server
     pub agent_card: Arc<AgentCard>,
@@ -311,12 +311,14 @@ impl AcpServerState {
     }
 
     /// Get a task by ID
+    #[allow(dead_code)]
     pub async fn get_task(&self, task_id: &str) -> Option<Task> {
         let tasks = self.tasks.read().await;
         tasks.get(task_id).cloned()
     }
 
     /// List all tasks
+    #[allow(dead_code)]
     pub async fn list_tasks(&self) -> Vec<Task> {
         let tasks = self.tasks.read().await;
         tasks.values().cloned().collect()

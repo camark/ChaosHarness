@@ -2,6 +2,8 @@
 //!
 //! Coordinates task assignment and result aggregation across multiple agents
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};

@@ -1,5 +1,7 @@
 //! Conversation message types with tool support
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 

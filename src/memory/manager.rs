@@ -1,5 +1,7 @@
 //! Memory manager
 
+#![allow(dead_code)]
+
 use crate::config::Settings;
 use std::path::{Path, PathBuf};
 use std::fs;

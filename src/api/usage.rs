@@ -1,5 +1,7 @@
 //! Usage tracking for API calls
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -7,6 +7,8 @@
 //! - Message sending and response handling
 //! - Capability negotiation
 
+#![allow(dead_code)]
+
 use crate::acp::types::*;
 use anyhow::{Result, anyhow, bail};
 use reqwest::Client;

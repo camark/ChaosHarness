@@ -4,6 +4,8 @@
 //! - Client -> Server: submit_line, shutdown, permission_response
 //! - Server -> Client: transcript_update, status, commands, select_request, error
 
+#![allow(dead_code)]
+
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::State,

@@ -15,7 +15,7 @@ pub fn get_user_plugins_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".rust_harness").join("plugins"))
 }
 
-pub fn load_plugins(settings: &Settings, cwd: &str) -> Vec<Plugin> {
+pub fn load_plugins(_settings: &Settings, cwd: &str) -> Vec<Plugin> {
     let mut plugins = Vec::new();
 
     // Load project-level plugins

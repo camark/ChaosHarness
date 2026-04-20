@@ -1,5 +1,7 @@
 //! Query engine with tool-use loop support
 
+#![allow(dead_code)]
+
 use crate::api::client::{ApiClient, ApiRequest, ApiUsage};
 use crate::api::errors::ApiError;
 use crate::config::Settings;

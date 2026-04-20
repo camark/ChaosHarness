@@ -1,5 +1,7 @@
 //! Inter-agent communication messages
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// Message types for agent communication

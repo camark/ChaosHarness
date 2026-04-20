@@ -126,7 +126,10 @@
       "Bash(curl -s \"https://api.github.com/repos/Eric-Yibo-Shen/zhangxuefeng-skillset/contents/skills\")",
       "Bash(timeout 30 ./target/debug/rust_harness --stdio-backend)",
       "Bash(python3 /tmp/test_github_install.py)",
-      "Bash(timeout 60 ./target/debug/rust_harness --stdio-backend)"
+      "Bash(timeout 60 ./target/debug/rust_harness --stdio-backend)",
+      "Bash(curl -sI \"https://raw.githubusercontent.com/Eric-Yibo-Shen/zhangxuefeng-skillset/main/skills/gaokao-mentor.skill\")",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/Eric-Yibo-Shen/zhangxuefeng-skillset/main/skills/gaokao-mentor.skill\")",
+      "Bash(./launch.sh:*)"
     ]
   }
 }

@@ -1,5 +1,7 @@
 //! Context building for prompts
 
+#![allow(dead_code)]
+
 use std::path::Path;
 
 pub fn build_context(_cwd: &str) -> String {

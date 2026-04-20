@@ -4,6 +4,8 @@
 //! capabilities, endpoints, and other information needed for discovery
 //! and interoperability.
 
+#![allow(dead_code)]
+
 use crate::acp::types::*;
 use serde_json::json;
 

@@ -2,6 +2,8 @@
 //!
 //! Protocol format: Messages are prefixed with "OHJSON:" followed by JSON
 
+#![allow(dead_code)]
+
 use crate::config::Settings;
 use crate::commands::registry::CommandRegistry;
 use crate::engine::query::QueryEngine;

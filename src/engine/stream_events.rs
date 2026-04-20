@@ -1,5 +1,7 @@
 //! Stream events for real-time output
 
+#![allow(dead_code)]
+
 use crate::engine::messages::ToolUseData;
 use crate::api::client::ApiUsage;
 

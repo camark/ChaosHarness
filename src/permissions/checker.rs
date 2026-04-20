@@ -1,5 +1,7 @@
 //! Permission checking logic
 
+#![allow(dead_code)]
+
 use crate::permissions::PermissionMode;
 use crate::config::PermissionSettings;
 use std::sync::Arc;

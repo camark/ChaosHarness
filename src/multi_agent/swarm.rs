@@ -2,6 +2,8 @@
 //!
 //! A swarm is a group of agents working together on a complex task
 
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};

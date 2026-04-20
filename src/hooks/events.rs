@@ -1,5 +1,7 @@
 //! Hook event types
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// Hook events that can be triggered during agent execution

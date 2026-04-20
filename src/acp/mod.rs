@@ -16,6 +16,10 @@ pub mod client;
 pub mod handlers;
 
 // Re-exports for convenience
+// Note: These are kept for potential external use even if not currently used internally
+#[allow(unused_imports)]
 pub use types::{AgentCard, AgentCapabilities, Skill, Task, Message, MessageRole};
+#[allow(unused_imports)]
 pub use server::AcpServerState;
+#[allow(unused_imports)]
 pub use client::{AcpClient, MessageBuilder};

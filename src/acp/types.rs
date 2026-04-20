@@ -6,6 +6,8 @@
 //! - Message: Message types for agent communication
 //! - Part: Content parts in messages (text, data, file, resource)
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// ACP Protocol version

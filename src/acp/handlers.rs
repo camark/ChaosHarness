@@ -2,6 +2,8 @@
 //!
 //! Handlers for processing ACP requests and integrating with local tools.
 
+#![allow(dead_code)]
+
 use crate::acp::types::*;
 use crate::acp::server::AcpServerState;
 use axum::{

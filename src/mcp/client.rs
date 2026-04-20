@@ -2,6 +2,8 @@
 //!
 //! Supports both stdio and SSE transports
 
+#![allow(dead_code)]
+
 use crate::mcp::config::load_mcp_server_configs;
 use crate::mcp::types::*;
 use crate::config::Settings;
@@ -456,7 +458,7 @@ impl McpManager {
     }
 
     /// Get a client by name
-    pub async fn get_client(&self, _name: &str) -> Option<tokio::sync::MutexGuard<McpClient>> {
+    pub async fn get_client(&self, _name: &str) -> Option<tokio::sync::MutexGuard<'_, McpClient>> {
         // This is a simplified version - in production would need better handling
         None
     }

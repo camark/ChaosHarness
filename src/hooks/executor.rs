@@ -1,5 +1,7 @@
 //! Hook executor - runs hooks and processes results
 
+#![allow(dead_code)]
+
 use super::events::HookEvent;
 use super::registry::HookRegistry;
 use super::types::{HookContext, HookDecision, HookResult};

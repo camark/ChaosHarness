@@ -1,5 +1,7 @@
 //! AskUser tool - Interactive user prompts
 
+#![allow(dead_code)]
+
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
 use anyhow::Result;
 use serde_json::{json, Value};

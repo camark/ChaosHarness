@@ -1,5 +1,7 @@
 //! Skill installer for downloading skills from SkillsMP marketplace
 
+#![allow(dead_code)]
+
 use anyhow::{Result, anyhow, bail};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};

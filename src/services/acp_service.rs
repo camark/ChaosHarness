@@ -5,6 +5,8 @@
 //! - 与远程 ACP 代理的桥梁
 //! - 本地工具到 ACP 技能的映射
 
+#![allow(dead_code)]
+
 use crate::acp;
 use crate::config::Settings;
 use anyhow::Result;
@@ -50,7 +52,7 @@ impl AcpService {
     }
 
     /// 从 Settings 创建配置
-    pub fn from_settings(settings: &Settings) -> AcpServiceConfig {
+    pub fn from_settings(_settings: &Settings) -> AcpServiceConfig {
         // 从 settings.json 或环境变量读取 ACP 配置
         // TODO: 在 Settings 中添加 acp 字段
         AcpServiceConfig::default()

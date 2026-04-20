@@ -1,5 +1,7 @@
 //! Hook registry - manages registered hooks by event type
 
+#![allow(dead_code)]
+
 use super::events::HookEvent;
 use super::schemas::HookDefinition;
 use std::collections::HashMap;

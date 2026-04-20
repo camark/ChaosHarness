@@ -1,5 +1,7 @@
 //! Environment detection
 
+#![allow(dead_code)]
+
 use std::env;
 
 pub fn detect_environment() -> String {

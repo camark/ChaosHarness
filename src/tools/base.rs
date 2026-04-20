@@ -1,5 +1,7 @@
 //! Tool abstractions and registry
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

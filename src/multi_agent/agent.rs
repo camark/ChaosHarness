@@ -1,5 +1,7 @@
 //! Agent definition and state management
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
