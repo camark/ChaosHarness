@@ -303,7 +303,7 @@ mod tests {
     async fn test_list_with_status_filter() {
         let manager = TaskManager::new();
         manager.create_bash_task("task1", "echo 1").await;
-        let id2 = manager.create_bash_task("task2", "echo 2").await;
+        let _id2 = manager.create_bash_task("task2", "echo 2").await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 

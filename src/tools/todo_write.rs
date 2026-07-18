@@ -79,7 +79,7 @@ impl Tool for TodoWriteTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    
     use tempfile::TempDir;
 
     #[tokio::test]

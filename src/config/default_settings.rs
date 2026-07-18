@@ -146,7 +146,7 @@ pub fn initialize_project(cwd: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    
     use std::path::PathBuf;
     use tempfile::TempDir;
 
