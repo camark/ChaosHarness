@@ -1,5 +1,7 @@
 //! Self-learning and context management system
 
+#![allow(dead_code)]
+
 pub mod types;
 pub mod store;
 pub mod bm25;

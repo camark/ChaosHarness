@@ -129,6 +129,7 @@ pub fn auto_compact_if_needed(
 ///
 /// Returns `true` when the estimated token count meets or exceeds the given
 /// threshold, or when the message count exceeds 50.
+#[allow(dead_code)]
 pub fn should_use_smart_compaction(messages: &[ConversationMessage], token_threshold: u32) -> bool {
     estimate_tokens(messages) >= token_threshold || messages.len() > 50
 }

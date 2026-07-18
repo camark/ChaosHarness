@@ -1,5 +1,7 @@
 //! Team manager service
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -11,8 +13,8 @@ pub struct Team {
     pub created_at: std::time::Instant,
 }
 
-/// Global team manager instance
 lazy_static::lazy_static! {
+    /// Global team manager instance
     pub static ref GLOBAL_TEAM_MANAGER: TeamManager = TeamManager::new();
 }
 

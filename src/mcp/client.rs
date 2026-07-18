@@ -551,8 +551,8 @@ impl McpManager {
     }
 }
 
-/// Global MCP manager instance
 lazy_static::lazy_static! {
+    /// Global MCP manager instance
     pub static ref GLOBAL_MCP_MANAGER: tokio::sync::Mutex<McpManager> = {
         let settings = crate::config::load_settings(None).unwrap_or_default();
         tokio::sync::Mutex::new(McpManager::new(settings))

@@ -8,8 +8,8 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Global swarm instances
 lazy_static::lazy_static! {
+    /// Global swarm instances
     pub static ref SWARMS: Arc<Mutex<std::collections::HashMap<String, Swarm>>> =
         Arc::new(Mutex::new(std::collections::HashMap::new()));
 }

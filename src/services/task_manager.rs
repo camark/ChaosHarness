@@ -1,13 +1,15 @@
 //! Background task manager
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Global task manager instance
 lazy_static::lazy_static! {
+    /// Global task manager instance
     pub static ref GLOBAL_TASK_MANAGER: TaskManager = TaskManager::new();
 }
 

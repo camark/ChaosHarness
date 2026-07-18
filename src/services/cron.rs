@@ -15,8 +15,8 @@ pub struct CronJob {
     pub enabled: bool,
 }
 
-/// Global cron manager instance
 lazy_static::lazy_static! {
+    /// Global cron manager instance
     pub static ref CRON_MANAGER: CronManager = CronManager::new();
 }
 
@@ -42,6 +42,7 @@ impl CronManager {
     }
 
     /// Create a new in-memory cron manager (for testing)
+    #[allow(dead_code)]
     pub fn new_in_memory() -> Self {
         Self {
             jobs: Arc::new(Mutex::new(HashMap::new())),
