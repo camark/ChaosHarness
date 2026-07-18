@@ -44,6 +44,11 @@ impl LearningEngine {
         }
     }
 
+    /// Borrow the underlying knowledge store.
+    pub fn store(&self) -> &KnowledgeStore {
+        &self.store
+    }
+
     /// Main entry point: process a conversation session and extract knowledge.
     pub fn process_session(
         &self,

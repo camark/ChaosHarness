@@ -7,3 +7,4 @@ pub mod summarizer;
 pub mod retriever;
 pub mod extractor;
 pub mod skill_gen;
+mod e2e_test;
