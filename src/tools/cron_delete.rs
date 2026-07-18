@@ -1,6 +1,7 @@
 //! CronDelete tool - Delete a cron job
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::cron::CRON_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -44,14 +45,13 @@ impl Tool for CronDeleteTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'name' field"))?;
 
-        // In a full implementation, this would remove from the cron registry
-        // For now, just acknowledge the deletion
-        tracing::info!("Deleting cron job: {}", name);
+        let deleted = CRON_MANAGER.delete_job(name).await;
 
-        Ok(ToolResult::success(format!(
-            "Deleted cron job '{}'",
-            name
-        )))
+        if deleted {
+            Ok(ToolResult::success(format!("Deleted cron job '{}'", name)))
+        } else {
+            Ok(ToolResult::error(format!("Cron job '{}' not found", name)))
+        }
     }
 }
 
@@ -61,13 +61,31 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_cron_delete() {
+    async fn test_cron_delete_existing() {
+        // Create a job first
+        CRON_MANAGER.create_job("delete-test", "*/5 * * * *", "echo hi").await;
+
         let tool = CronDeleteTool;
-        let input = serde_json::json!({"name": "test-job"});
+        let input = serde_json::json!({"name": "delete-test"});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
         assert!(result.output.contains("Deleted cron job"));
+
+        // Verify it's gone
+        let job = CRON_MANAGER.get_job("delete-test").await;
+        assert!(job.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cron_delete_not_found() {
+        let tool = CronDeleteTool;
+        let input = serde_json::json!({"name": "nonexistent"});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 }

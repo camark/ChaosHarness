@@ -1,7 +1,7 @@
 //! Config tool - View and modify configuration settings
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
-use crate::config::Settings;
+use crate::config::{Settings, load_settings, save_settings};
 use anyhow::Result;
 use serde_json::Value;
 
@@ -54,7 +54,7 @@ impl Tool for ConfigTool {
 
         match action {
             "show" => {
-                let settings = Settings::default();
+                let settings = load_settings(None).unwrap_or_default();
                 let config_info = format!(
                     "Model: {}\nTheme: {}\nOutput style: {}\nVim mode: {}\nFast mode: {}\nEffort: {}\nPasses: {}",
                     settings.model,
@@ -75,12 +75,33 @@ impl Tool for ConfigTool {
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'value' field for 'set' action"))?;
 
-                // In a full implementation, this would save to settings.json
-                // For now, just acknowledge the change
-                Ok(ToolResult::success(format!(
-                    "Configuration updated: {} = {} (session only)",
-                    key, value
-                )))
+                let mut settings = load_settings(None).unwrap_or_default();
+
+                // Update the setting based on key
+                match key {
+                    "model" => settings.model = value.to_string(),
+                    "theme" => settings.theme = value.to_string(),
+                    "output_style" => settings.output_style = value.to_string(),
+                    "vim_mode" => settings.vim_mode = value == "true" || value == "on",
+                    "voice_mode" => settings.voice_mode = value == "true" || value == "on",
+                    "fast_mode" => settings.fast_mode = value == "true" || value == "on",
+                    "effort" => settings.effort = value.to_string(),
+                    "passes" => settings.passes = value.parse().unwrap_or(1),
+                    "verbose" => settings.verbose = value == "true" || value == "on",
+                    _ => return Ok(ToolResult::error(format!("Unknown setting: {}", key))),
+                }
+
+                // Save to disk
+                match save_settings(&settings, None) {
+                    Ok(()) => Ok(ToolResult::success(format!(
+                        "Configuration updated: {} = {} (saved to disk)",
+                        key, value
+                    ))),
+                    Err(e) => Ok(ToolResult::error(format!(
+                        "Failed to save settings: {}",
+                        e
+                    ))),
+                }
             }
             _ => Ok(ToolResult::error(
                 "Unknown action. Use 'show' or 'set'.".to_string(),

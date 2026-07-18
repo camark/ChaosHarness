@@ -1,6 +1,7 @@
 //! TeamDelete tool - Remove an in-memory team
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::team_manager::GLOBAL_TEAM_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -44,11 +45,13 @@ impl Tool for TeamDeleteTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'name' field"))?;
 
-        // In a full implementation, this would remove the team
-        // For now, just acknowledge the deletion
-        tracing::info!("Deleting team: {}", name);
+        let deleted = GLOBAL_TEAM_MANAGER.delete_team(name).await;
 
-        Ok(ToolResult::success(format!("Deleted team {}", name)))
+        if deleted {
+            Ok(ToolResult::success(format!("Deleted team '{}'", name)))
+        } else {
+            Ok(ToolResult::error(format!("Team '{}' not found", name)))
+        }
     }
 }
 
@@ -58,14 +61,21 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_team_delete() {
+    async fn test_team_delete_existing() {
+        // Create team first
+        GLOBAL_TEAM_MANAGER.create_team("del-test", "to delete").await;
+
         let tool = TeamDeleteTool;
-        let input = serde_json::json!({"name": "test-team"});
+        let input = serde_json::json!({"name": "del-test"});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
         assert!(result.output.contains("Deleted team"));
+
+        // Verify it's gone
+        let team = GLOBAL_TEAM_MANAGER.get_team("del-test").await;
+        assert!(team.is_none());
     }
 
     #[tokio::test]
@@ -87,7 +97,7 @@ mod tests {
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
-        assert!(!result.is_error);
-        assert!(result.output.contains("Deleted team"));
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 }

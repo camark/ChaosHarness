@@ -1,7 +1,7 @@
 //! CronList tool - List all cron jobs
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
-use crate::services::cron::load_cron_jobs;
+use crate::services::cron::CRON_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -43,7 +43,7 @@ impl Tool for CronListTool {
     async fn execute(&self, input: Value, _context: ToolExecutionContext) -> Result<ToolResult> {
         let show_disabled = input["show_disabled"].as_bool().unwrap_or(true);
 
-        let jobs = load_cron_jobs();
+        let jobs = CRON_MANAGER.list_jobs().await;
 
         if jobs.is_empty() {
             return Ok(ToolResult::success(
@@ -76,14 +76,45 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_cron_list() {
+    async fn test_cron_list_empty() {
+        // Use unique name to avoid conflicts with other tests
         let tool = CronListTool;
         let input = serde_json::json!({});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
-        // Will show "No cron jobs configured" since we don't have any
-        assert!(result.output.contains("cron"));
+        // Could be empty or have jobs from other tests
+        assert!(result.output.contains("cron") || result.output.contains("Schedule"));
+    }
+
+    #[tokio::test]
+    async fn test_cron_list_with_jobs() {
+        CRON_MANAGER.create_job("list-test-1", "*/5 * * * *", "echo 1").await;
+        CRON_MANAGER.create_job("list-test-2", "*/10 * * * *", "echo 2").await;
+
+        let tool = CronListTool;
+        let input = serde_json::json!({});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.output.contains("list-test-1"));
+        assert!(result.output.contains("list-test-2"));
+    }
+
+    #[tokio::test]
+    async fn test_cron_list_hide_disabled() {
+        CRON_MANAGER.create_job("list-dis-test", "*/5 * * * *", "echo hi").await;
+        CRON_MANAGER.set_job_enabled("list-dis-test", false).await;
+
+        let tool = CronListTool;
+        let input = serde_json::json!({"show_disabled": false});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(!result.is_error);
+        // The disabled job should not appear
+        assert!(!result.output.contains("list-dis-test"));
     }
 }

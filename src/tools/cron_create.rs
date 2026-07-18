@@ -1,7 +1,7 @@
 //! CronCreate tool - Create a new cron job
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
-use crate::services::cron::CronJob;
+use crate::services::cron::CRON_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -69,21 +69,19 @@ impl Tool for CronCreateTool {
             ));
         }
 
-        // In a full implementation, this would save to the cron registry
-        let job = CronJob {
-            name: name.to_string(),
-            schedule: schedule.to_string(),
-            command: command.to_string(),
-            enabled: true,
-        };
+        let created = CRON_MANAGER.create_job(name, schedule, command).await;
 
-        // For now, just log the creation
-        tracing::info!("Created cron job: {:?}", job);
-
-        Ok(ToolResult::success(format!(
-            "Created cron job '{}' with schedule '{}' executing '{}'",
-            name, schedule, command
-        )))
+        if created {
+            Ok(ToolResult::success(format!(
+                "Created cron job '{}' with schedule '{}' executing '{}'",
+                name, schedule, command
+            )))
+        } else {
+            Ok(ToolResult::error(format!(
+                "Cron job '{}' already exists",
+                name
+            )))
+        }
     }
 }
 
@@ -120,5 +118,25 @@ mod tests {
 
         assert!(result.is_error);
         assert!(result.output.contains("Invalid cron schedule"));
+    }
+
+    #[tokio::test]
+    async fn test_cron_create_duplicate() {
+        let tool = CronCreateTool;
+        let input = serde_json::json!({
+            "name": "dup-test",
+            "schedule": "*/5 * * * *",
+            "command": "echo hello"
+        });
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+
+        // First creation should succeed
+        let result = tool.execute(input.clone(), context.clone()).await.unwrap();
+        assert!(!result.is_error);
+
+        // Second creation should fail
+        let result = tool.execute(input, context).await.unwrap();
+        assert!(result.is_error);
+        assert!(result.output.contains("already exists"));
     }
 }

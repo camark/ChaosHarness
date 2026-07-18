@@ -1,6 +1,7 @@
 //! TeamCreate tool - Create an in-memory team
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::team_manager::GLOBAL_TEAM_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -51,11 +52,13 @@ impl Tool for TeamCreateTool {
 
         let description = input["description"].as_str().unwrap_or("");
 
-        // In a full implementation, this would register the team
-        // For now, just acknowledge the creation
-        tracing::info!("Creating team: {} - {}", name, description);
+        let created = GLOBAL_TEAM_MANAGER.create_team(name, description).await;
 
-        Ok(ToolResult::success(format!("Created team {}", name)))
+        if created {
+            Ok(ToolResult::success(format!("Created team '{}'", name)))
+        } else {
+            Ok(ToolResult::error(format!("Team '{}' already exists", name)))
+        }
     }
 }
 
@@ -68,7 +71,7 @@ mod tests {
     async fn test_team_create() {
         let tool = TeamCreateTool;
         let input = serde_json::json!({
-            "name": "test-team",
+            "name": "create-test-team",
             "description": "Test team"
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
@@ -76,6 +79,10 @@ mod tests {
 
         assert!(!result.is_error);
         assert!(result.output.contains("Created team"));
+
+        // Verify team exists
+        let team = GLOBAL_TEAM_MANAGER.get_team("create-test-team").await;
+        assert!(team.is_some());
     }
 
     #[tokio::test]
@@ -89,30 +96,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_team_create_with_description() {
+    async fn test_team_create_duplicate() {
         let tool = TeamCreateTool;
         let input = serde_json::json!({
-            "name": "security-team",
-            "description": "Security analysis team"
+            "name": "dup-team",
+            "description": "First"
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
-        let result = tool.execute(input, context).await.unwrap();
 
+        // First creation should succeed
+        let result = tool.execute(input.clone(), context.clone()).await.unwrap();
         assert!(!result.is_error);
-        assert!(result.output.contains("Created team security-team"));
+
+        // Second creation should fail
+        let result = tool.execute(input, context).await.unwrap();
+        assert!(result.is_error);
+        assert!(result.output.contains("already exists"));
     }
 
     #[tokio::test]
     async fn test_team_create_empty_description() {
         let tool = TeamCreateTool;
         let input = serde_json::json!({
-            "name": "default-team",
+            "name": "empty-desc-team",
             "description": ""
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
-        assert!(result.output.contains("Created team default-team"));
+        assert!(result.output.contains("Created team"));
     }
 }

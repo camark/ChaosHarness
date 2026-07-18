@@ -1,6 +1,8 @@
 //! RemoteTrigger tool - Trigger a cron job immediately
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::cron::CRON_MANAGER;
+use crate::services::task_manager::GLOBAL_TASK_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -60,18 +62,22 @@ impl Tool for RemoteTriggerTool {
             ));
         }
 
-        // In a full implementation, this would look up the cron job
-        // and execute its command
-        tracing::info!(
-            "Triggering cron job '{}' with timeout {}s",
-            name,
-            timeout_seconds
-        );
+        // Look up the cron job
+        let job = CRON_MANAGER.get_job(name).await;
+        let job = match job {
+            Some(j) => j,
+            None => return Ok(ToolResult::error(format!("Cron job '{}' not found", name))),
+        };
 
-        // For now, return a placeholder response
+        // Create a background task to execute the command
+        let task_id = GLOBAL_TASK_MANAGER.create_bash_task(
+            &format!("Triggered: {}", name),
+            &job.command,
+        ).await;
+
         Ok(ToolResult::success(format!(
-            "Triggered {} (not implemented - job not found)",
-            name
+            "Triggered cron job '{}' as task {} (command: {}, timeout: {}s)",
+            name, task_id, job.command, timeout_seconds
         )))
     }
 }
@@ -82,16 +88,33 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_remote_trigger() {
+    async fn test_remote_trigger_existing_job() {
+        // Create a cron job first
+        CRON_MANAGER.create_job("trigger-test", "*/5 * * * *", "echo triggered").await;
+
         let tool = RemoteTriggerTool;
         let input = serde_json::json!({
-            "name": "test-job"
+            "name": "trigger-test"
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
-        assert!(result.output.contains("Triggered"));
+        assert!(result.output.contains("Triggered cron job"));
+        assert!(result.output.contains("task"));
+    }
+
+    #[tokio::test]
+    async fn test_remote_trigger_not_found() {
+        let tool = RemoteTriggerTool;
+        let input = serde_json::json!({
+            "name": "nonexistent-job"
+        });
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 
     #[tokio::test]

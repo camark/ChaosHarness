@@ -1,7 +1,7 @@
 //! CronToggle tool - Enable or disable a cron job
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
-use crate::services::cron::set_job_enabled;
+use crate::services::cron::CRON_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -55,8 +55,7 @@ impl Tool for CronToggleTool {
 
         let action = if enabled { "enabled" } else { "disabled" };
 
-        // In a full implementation, this would update the cron registry
-        let success = set_job_enabled(name, enabled);
+        let success = CRON_MANAGER.set_job_enabled(name, enabled).await;
 
         if success {
             Ok(ToolResult::success(format!(
@@ -65,8 +64,7 @@ impl Tool for CronToggleTool {
             )))
         } else {
             Ok(ToolResult::error(format!(
-                "Failed to {} cron job '{}'",
-                if enabled { "enable" } else { "disable" },
+                "Cron job '{}' not found",
                 name
             )))
         }
@@ -80,23 +78,46 @@ mod tests {
 
     #[tokio::test]
     async fn test_cron_toggle_enable() {
+        // Create a job and disable it
+        CRON_MANAGER.create_job("toggle-test", "*/5 * * * *", "echo hi").await;
+        CRON_MANAGER.set_job_enabled("toggle-test", false).await;
+
         let tool = CronToggleTool;
-        let input = serde_json::json!({"name": "test-job", "enabled": true});
+        let input = serde_json::json!({"name": "toggle-test", "enabled": true});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
         assert!(result.output.contains("enabled"));
+
+        let job = CRON_MANAGER.get_job("toggle-test").await.unwrap();
+        assert!(job.enabled);
     }
 
     #[tokio::test]
     async fn test_cron_toggle_disable() {
+        CRON_MANAGER.create_job("toggle-dis", "*/5 * * * *", "echo hi").await;
+
         let tool = CronToggleTool;
-        let input = serde_json::json!({"name": "test-job", "enabled": false});
+        let input = serde_json::json!({"name": "toggle-dis", "enabled": false});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
         assert!(result.output.contains("disabled"));
+
+        let job = CRON_MANAGER.get_job("toggle-dis").await.unwrap();
+        assert!(!job.enabled);
+    }
+
+    #[tokio::test]
+    async fn test_cron_toggle_not_found() {
+        let tool = CronToggleTool;
+        let input = serde_json::json!({"name": "nonexistent", "enabled": true});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 }
