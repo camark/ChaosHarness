@@ -352,6 +352,160 @@ impl KnowledgeStore {
         .context("Failed to update pattern frequency")?;
         Ok(())
     }
+
+    // ── BM25 Integration ─────────────────────────────────────────────────
+
+    /// Index a knowledge entry in BM25.
+    pub fn index_knowledge_bm25(
+        &self,
+        knowledge_id: i64,
+        text: &str,
+        bm25: &super::bm25::Bm25Engine,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        bm25.index_document(&conn, "knowledge", knowledge_id, text)
+    }
+
+    /// Index a summary in BM25.
+    pub fn index_summary_bm25(
+        &self,
+        summary_id: i64,
+        text: &str,
+        bm25: &super::bm25::Bm25Engine,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        bm25.index_document(&conn, "summary", summary_id, text)
+    }
+
+    /// Index a pattern in BM25.
+    pub fn index_pattern_bm25(
+        &self,
+        pattern_id: i64,
+        text: &str,
+        bm25: &super::bm25::Bm25Engine,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        bm25.index_document(&conn, "pattern", pattern_id, text)
+    }
+
+    /// Search across all indexed documents using BM25 scoring.
+    ///
+    /// Calls `bm25.search()` to get scored docs, then for each result looks up
+    /// the actual document from the appropriate table and returns
+    /// `Vec<RetrievedContext>`.
+    pub fn bm25_search(
+        &self,
+        query: &str,
+        limit: usize,
+        bm25: &super::bm25::Bm25Engine,
+    ) -> Result<Vec<super::types::RetrievedContext>> {
+        let conn = self.conn.lock().unwrap();
+        let scored_docs = bm25.search(&conn, query, limit)?;
+        let mut results = Vec::new();
+
+        for (doc_type, doc_id, score) in scored_docs {
+            match doc_type.as_str() {
+                "summary" => {
+                    let mut stmt = conn
+                        .prepare(
+                            "SELECT id, session_id, summary, message_range_start, \
+                             message_range_end, tokens_saved, created_at \
+                             FROM conversation_summaries WHERE id = ?1",
+                        )
+                        .context("Failed to prepare summary lookup")?;
+                    let mut rows = stmt
+                        .query_map(params![doc_id], |row| {
+                            Ok(ConversationSummary {
+                                id: Some(row.get(0)?),
+                                session_id: row.get(1)?,
+                                summary: row.get(2)?,
+                                message_range_start: row.get(3)?,
+                                message_range_end: row.get(4)?,
+                                tokens_saved: row.get(5)?,
+                                created_at: parse_datetime(row.get(6)?),
+                            })
+                        })
+                        .context("Failed to query summary for BM25 result")?;
+                    if let Some(row) = rows.next() {
+                        let summary = row.context("Failed to read summary row")?;
+                        results.push(super::types::RetrievedContext::Summary {
+                            text: summary.summary,
+                            score,
+                        });
+                    }
+                }
+                "knowledge" => {
+                    let mut stmt = conn
+                        .prepare(
+                            "SELECT id, category, topic, content, source_session_id, \
+                             confidence, access_count, created_at, last_accessed \
+                             FROM knowledge_entries WHERE id = ?1",
+                        )
+                        .context("Failed to prepare knowledge lookup")?;
+                    let mut rows = stmt
+                        .query_map(params![doc_id], |row| {
+                            Ok(KnowledgeEntry {
+                                id: Some(row.get(0)?),
+                                category: KnowledgeCategory::from_str(
+                                    &row.get::<_, String>(1)?,
+                                ),
+                                topic: row.get(2)?,
+                                content: row.get(3)?,
+                                source_session_id: row.get(4)?,
+                                confidence: row.get(5)?,
+                                access_count: row.get(6)?,
+                                created_at: parse_datetime(row.get(7)?),
+                                last_accessed: parse_datetime(row.get(8)?),
+                            })
+                        })
+                        .context("Failed to query knowledge for BM25 result")?;
+                    if let Some(row) = rows.next() {
+                        let entry = row.context("Failed to read knowledge row")?;
+                        results.push(super::types::RetrievedContext::Knowledge {
+                            entry,
+                            score,
+                        });
+                    }
+                }
+                "pattern" => {
+                    let mut stmt = conn
+                        .prepare(
+                            "SELECT id, pattern_type, description, example, frequency, \
+                             created_at, last_seen \
+                             FROM patterns WHERE id = ?1",
+                        )
+                        .context("Failed to prepare pattern lookup")?;
+                    let mut rows = stmt
+                        .query_map(params![doc_id], |row| {
+                            Ok(Pattern {
+                                id: Some(row.get(0)?),
+                                pattern_type: PatternType::from_str(
+                                    &row.get::<_, String>(1)?,
+                                ),
+                                description: row.get(2)?,
+                                example: row.get(3)?,
+                                frequency: row.get(4)?,
+                                created_at: parse_datetime(row.get(5)?),
+                                last_seen: parse_datetime(row.get(6)?),
+                            })
+                        })
+                        .context("Failed to query pattern for BM25 result")?;
+                    if let Some(row) = rows.next() {
+                        let pattern = row.context("Failed to read pattern row")?;
+                        results.push(super::types::RetrievedContext::Pattern {
+                            pattern,
+                            score,
+                        });
+                    }
+                }
+                _ => {
+                    // Unknown doc type, skip
+                }
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 /// Parse an optional RFC 3339 datetime string from SQLite.
@@ -611,5 +765,178 @@ mod tests {
         let all = store.get_all_knowledge().expect("Failed to get knowledge");
         let conf = all[0].confidence;
         assert!((conf - 1.0).abs() < f64::EPSILON, "Expected 1.0, got {conf}");
+    }
+
+    #[test]
+    fn test_bm25_integration() {
+        use super::super::bm25::Bm25Engine;
+        use super::super::types::RetrievedContext;
+
+        let store = KnowledgeStore::new_in_memory().unwrap();
+        let bm25 = Bm25Engine::new();
+
+        // Add and index knowledge
+        let entry = KnowledgeEntry {
+            id: None,
+            category: KnowledgeCategory::Fact,
+            topic: "async_runtime".to_string(),
+            content: "Project uses tokio for async runtime".to_string(),
+            source_session_id: None,
+            confidence: 0.8,
+            access_count: 0,
+            created_at: None,
+            last_accessed: None,
+        };
+        let id = store.add_knowledge(&entry).unwrap();
+        store
+            .index_knowledge_bm25(id, &entry.content, &bm25)
+            .unwrap();
+
+        // Search
+        let results = store.bm25_search("tokio async", 5, &bm25).unwrap();
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            RetrievedContext::Knowledge { entry, score } => {
+                assert!(entry.content.contains("tokio"));
+                assert!(*score > 0.0);
+            }
+            _ => panic!("Expected Knowledge result"),
+        }
+    }
+
+    #[test]
+    fn test_bm25_search_summary() {
+        use super::super::bm25::Bm25Engine;
+        use super::super::types::RetrievedContext;
+
+        let store = KnowledgeStore::new_in_memory().unwrap();
+        let bm25 = Bm25Engine::new();
+
+        let summary = ConversationSummary {
+            id: None,
+            session_id: "sess-001".to_string(),
+            summary: "User asked about Rust lifetimes and borrow checker".to_string(),
+            message_range_start: 0,
+            message_range_end: 10,
+            tokens_saved: 500,
+            created_at: None,
+        };
+        let id = store.add_summary(&summary).unwrap();
+        store
+            .index_summary_bm25(id, &summary.summary, &bm25)
+            .unwrap();
+
+        let results = store.bm25_search("borrow checker", 5, &bm25).unwrap();
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            RetrievedContext::Summary { text, score } => {
+                assert!(text.contains("borrow checker"));
+                assert!(*score > 0.0);
+            }
+            _ => panic!("Expected Summary result"),
+        }
+    }
+
+    #[test]
+    fn test_bm25_search_pattern() {
+        use super::super::bm25::Bm25Engine;
+        use super::super::types::RetrievedContext;
+
+        let store = KnowledgeStore::new_in_memory().unwrap();
+        let bm25 = Bm25Engine::new();
+
+        let pattern = Pattern {
+            id: None,
+            pattern_type: PatternType::CodingStyle,
+            description: "Prefers explicit type annotations in Rust code".to_string(),
+            example: Some("let x: i32 = 42;".to_string()),
+            frequency: 1,
+            created_at: None,
+            last_seen: None,
+        };
+        let id = store.add_pattern(&pattern).unwrap();
+        store
+            .index_pattern_bm25(id, &pattern.description, &bm25)
+            .unwrap();
+
+        let results = store.bm25_search("explicit type annotations", 5, &bm25).unwrap();
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            RetrievedContext::Pattern { pattern, score } => {
+                assert!(pattern.description.contains("explicit type"));
+                assert!(*score > 0.0);
+            }
+            _ => panic!("Expected Pattern result"),
+        }
+    }
+
+    #[test]
+    fn test_bm25_search_mixed_types() {
+        use super::super::bm25::Bm25Engine;
+        use super::super::types::RetrievedContext;
+
+        let store = KnowledgeStore::new_in_memory().unwrap();
+        let bm25 = Bm25Engine::new();
+
+        // Add one of each type, all mentioning "rust"
+        let entry = KnowledgeEntry {
+            id: None,
+            category: KnowledgeCategory::Fact,
+            topic: "language".to_string(),
+            content: "Rust is a systems programming language".to_string(),
+            source_session_id: None,
+            confidence: 0.8,
+            access_count: 0,
+            created_at: None,
+            last_accessed: None,
+        };
+        let kid = store.add_knowledge(&entry).unwrap();
+        store.index_knowledge_bm25(kid, &entry.content, &bm25).unwrap();
+
+        let summary = ConversationSummary {
+            id: None,
+            session_id: "sess-002".to_string(),
+            summary: "Discussed Rust memory safety guarantees".to_string(),
+            message_range_start: 0,
+            message_range_end: 5,
+            tokens_saved: 300,
+            created_at: None,
+        };
+        let sid = store.add_summary(&summary).unwrap();
+        store.index_summary_bm25(sid, &summary.summary, &bm25).unwrap();
+
+        let pattern = Pattern {
+            id: None,
+            pattern_type: PatternType::Workflow,
+            description: "Always run cargo clippy before committing Rust code".to_string(),
+            example: None,
+            frequency: 1,
+            created_at: None,
+            last_seen: None,
+        };
+        let pid = store.add_pattern(&pattern).unwrap();
+        store.index_pattern_bm25(pid, &pattern.description, &bm25).unwrap();
+
+        let results = store.bm25_search("Rust", 10, &bm25).unwrap();
+        assert_eq!(results.len(), 3);
+
+        // Verify all three types are present
+        let has_knowledge = results.iter().any(|r| matches!(r, RetrievedContext::Knowledge { .. }));
+        let has_summary = results.iter().any(|r| matches!(r, RetrievedContext::Summary { .. }));
+        let has_pattern = results.iter().any(|r| matches!(r, RetrievedContext::Pattern { .. }));
+        assert!(has_knowledge, "Expected at least one Knowledge result");
+        assert!(has_summary, "Expected at least one Summary result");
+        assert!(has_pattern, "Expected at least one Pattern result");
+    }
+
+    #[test]
+    fn test_bm25_search_empty_index() {
+        use super::super::bm25::Bm25Engine;
+
+        let store = KnowledgeStore::new_in_memory().unwrap();
+        let bm25 = Bm25Engine::new();
+
+        let results = store.bm25_search("anything", 5, &bm25).unwrap();
+        assert!(results.is_empty());
     }
 }
