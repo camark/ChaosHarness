@@ -62,7 +62,7 @@ impl Tool for McpAuthTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'mode' field"))?;
 
-        let value = input["value"]
+        let _value = input["value"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'value' field"))?;
 

@@ -1,7 +1,7 @@
 //! Config tool - View and modify configuration settings
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
-use crate::config::{Settings, load_settings, save_settings};
+use crate::config::{load_settings, save_settings};
 use anyhow::Result;
 use serde_json::Value;
 

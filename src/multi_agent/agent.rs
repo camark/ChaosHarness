@@ -142,7 +142,7 @@ impl Agent {
         // Create a new QueryEngine for this agent
         let cwd = std::env::current_dir().unwrap_or_default();
         let tool_registry = crate::tools::init::init_tools().await;
-        let mut engine = crate::engine::query::QueryEngine::new(
+        let engine = crate::engine::query::QueryEngine::new(
             self.settings.clone(),
             tool_registry,
             cwd,

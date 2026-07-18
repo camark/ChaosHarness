@@ -7,7 +7,7 @@ use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
 use anyhow::Result;
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Input schema for lsp tool
 pub fn lsp_input_schema() -> Value {

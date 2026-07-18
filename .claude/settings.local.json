@@ -129,7 +129,15 @@
       "Bash(timeout 60 ./target/debug/rust_harness --stdio-backend)",
       "Bash(curl -sI \"https://raw.githubusercontent.com/Eric-Yibo-Shen/zhangxuefeng-skillset/main/skills/gaokao-mentor.skill\")",
       "Bash(curl -sL \"https://raw.githubusercontent.com/Eric-Yibo-Shen/zhangxuefeng-skillset/main/skills/gaokao-mentor.skill\")",
-      "Bash(./launch.sh:*)"
+      "Bash(./launch.sh:*)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git rebase:*)",
+      "Bash(git branch:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fix:*)"
     ]
   }
 }

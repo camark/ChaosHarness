@@ -93,8 +93,13 @@ mod tests {
     #[tokio::test]
     async fn test_cron_create() {
         let tool = CronCreateTool;
+        // Use unique name to avoid conflicts
+        let name = format!("test-job-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos());
         let input = serde_json::json!({
-            "name": "test-job",
+            "name": name,
             "schedule": "*/5 * * * *",
             "command": "echo hello"
         });
@@ -109,7 +114,7 @@ mod tests {
     async fn test_cron_create_invalid_schedule() {
         let tool = CronCreateTool;
         let input = serde_json::json!({
-            "name": "test-job",
+            "name": "invalid-sched-test",
             "schedule": "invalid",
             "command": "echo hello"
         });
@@ -123,8 +128,13 @@ mod tests {
     #[tokio::test]
     async fn test_cron_create_duplicate() {
         let tool = CronCreateTool;
+        // Use unique name to avoid conflicts
+        let name = format!("dup-test-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos());
         let input = serde_json::json!({
-            "name": "dup-test",
+            "name": name,
             "schedule": "*/5 * * * *",
             "command": "echo hello"
         });
