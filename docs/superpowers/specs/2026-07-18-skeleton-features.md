@@ -25,14 +25,13 @@
 
 ## Services
 
-- [x] `services/cron.rs` — Cron 任务管理（加载/保存为 stub）
-- [ ] `ui/repl.rs:207` — `run_resume_session` 只是调用 `run_repl`，不恢复会话
-- [ ] `prompts/context.rs` — 上下文构建（返回固定字符串）
+- [x] `services/cron.rs` — Cron 任务管理（已实现持久化）
+- [x] `ui/repl.rs:207` — `run_resume_session` 已实现会话恢复
+- [x] `prompts/context.rs` — 上下文构建（已实现真实上下文）
 
 ## 模块级 skeleton
 
 - [ ] `multi_agent/` — 结构完整但未接入 query loop
-- [ ] `services/cron.rs` — 无持久化
 
 ## 实现顺序
 

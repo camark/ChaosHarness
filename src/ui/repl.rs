@@ -198,14 +198,29 @@ pub async fn run_resume_session(_args: &Args, settings: Settings) -> Result<()> 
 
     // Create query engine
     let cwd = std::env::current_dir().unwrap_or_default();
-    let mut query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd)
+    let mut query_engine = QueryEngine::new(settings.clone(), tool_registry, cwd.clone())
         .map_err(|e| anyhow::anyhow!(e))?;
 
     // Initialize MCP connections
     let _ = query_engine.initialize_mcp().await;
 
-    // In a full implementation, this would load the previous session
-    // and restore the conversation history
-    // For now, just run the REPL
+    // Load previous session
+    let cwd_str = cwd.to_string_lossy().to_string();
+    if let Some(session_data) = crate::services::session_storage::load_session_snapshot(&cwd_str) {
+        info!("Loaded session: {} ({} messages)", session_data.session_id, session_data.messages.len());
+
+        // Restore messages to query engine
+        query_engine.load_messages(session_data.messages).await;
+
+        println!("Resumed session: {}", session_data.session_id);
+        if let Some(summary) = &session_data.summary {
+            println!("Summary: {}", summary);
+        }
+        println!();
+    } else {
+        println!("No previous session found. Starting new session.");
+    }
+
+    // Run the REPL with the restored engine
     run_repl(_args, settings).await
 }
