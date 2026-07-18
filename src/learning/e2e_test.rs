@@ -50,7 +50,7 @@ mod e2e_tests {
         // 6. Process session
         let store2 = KnowledgeStore::new_in_memory().unwrap();
         let engine =
-            LearningEngine::new(store2, 1.2, 0.75, None, "test".to_string(), false);
+            LearningEngine::new(store2, 1.2, 0.75, None, "test".to_string(), false, std::path::PathBuf::from("/tmp"));
         let result = engine.process_session(&messages, "test-session").unwrap();
 
         assert_eq!(result.knowledge_extracted, 1);
@@ -73,7 +73,7 @@ mod e2e_tests {
         ];
 
         let store = KnowledgeStore::new_in_memory().unwrap();
-        let engine = LearningEngine::new(store, 1.2, 0.75, None, "test".to_string(), false);
+        let engine = LearningEngine::new(store, 1.2, 0.75, None, "test".to_string(), false, std::path::PathBuf::from("/tmp"));
         let result = engine.process_session(&messages, "session-multi").unwrap();
 
         assert_eq!(result.knowledge_extracted, 2);
@@ -96,7 +96,7 @@ mod e2e_tests {
         )];
 
         let store = KnowledgeStore::new_in_memory().unwrap();
-        let engine = LearningEngine::new(store, 1.2, 0.75, None, "test".to_string(), false);
+        let engine = LearningEngine::new(store, 1.2, 0.75, None, "test".to_string(), false, std::path::PathBuf::from("/tmp"));
 
         let result1 = engine.process_session(&messages1, "session-1").unwrap();
         assert_eq!(result1.knowledge_extracted, 1);
@@ -206,7 +206,7 @@ mod e2e_tests {
         ];
 
         let store = KnowledgeStore::new_in_memory().unwrap();
-        let engine = LearningEngine::new(store, 1.2, 0.75, None, "test".to_string(), false);
+        let engine = LearningEngine::new(store, 1.2, 0.75, None, "test".to_string(), false, std::path::PathBuf::from("/tmp"));
         let result = engine.process_session(&messages, "empty-session").unwrap();
 
         assert_eq!(result.knowledge_extracted, 0);

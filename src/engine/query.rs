@@ -131,6 +131,7 @@ impl QueryEngine {
                         Some(ApiClient::new(api_key.clone(), settings.base_url.clone())),
                         settings.model.clone(),
                         settings.learning.session_end_extraction,
+                        cwd.clone(),
                     );
 
                     (Some(retriever), Some(compactor), Some(extractor))

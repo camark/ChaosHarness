@@ -6,6 +6,7 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde_json::Value;
+use std::path::PathBuf;
 
 use crate::api::client::{ApiClient, ApiRequest};
 use crate::engine::messages::ConversationMessage;
@@ -15,6 +16,7 @@ use crate::learning::types::{
     ExtractedItem, KnowledgeCategory, KnowledgeEntry, LearningMarker, LearningResult, Pattern,
     PatternType,
 };
+use crate::memory::MemoryManager;
 
 /// Core learning engine that orchestrates knowledge and pattern extraction.
 pub struct LearningEngine {
@@ -23,6 +25,7 @@ pub struct LearningEngine {
     api_client: Option<ApiClient>,
     model: String,
     use_llm_extraction: bool,
+    cwd: PathBuf,
 }
 
 impl LearningEngine {
@@ -34,6 +37,7 @@ impl LearningEngine {
         api_client: Option<ApiClient>,
         model: String,
         use_llm_extraction: bool,
+        cwd: PathBuf,
     ) -> Self {
         Self {
             store,
@@ -41,12 +45,33 @@ impl LearningEngine {
             api_client,
             model,
             use_llm_extraction,
+            cwd,
         }
     }
 
     /// Borrow the underlying knowledge store.
     pub fn store(&self) -> &KnowledgeStore {
         &self.store
+    }
+
+    /// Mirror high-confidence knowledge entries to the MEMORY.md system.
+    fn mirror_to_memory(&self, confidence_threshold: f64) -> Result<usize> {
+        let cwd = self.cwd.to_string_lossy().to_string();
+        let entries = self.store.get_all_knowledge()?;
+        let mut mirrored = 0;
+
+        for entry in &entries {
+            if entry.confidence >= confidence_threshold {
+                let title = format!("{} ({})", entry.topic, entry.category.as_str());
+                if let Err(e) = MemoryManager::add_memory_entry(&cwd, &title, &entry.content) {
+                    tracing::warn!("Failed to mirror knowledge to memory: {}", e);
+                } else {
+                    mirrored += 1;
+                }
+            }
+        }
+
+        Ok(mirrored)
     }
 
     /// Main entry point: process a conversation session and extract knowledge.
@@ -118,6 +143,13 @@ impl LearningEngine {
                         tracing::warn!("LLM extraction failed: {}", e);
                     }
                 }
+            }
+        }
+
+        // Step 3: Mirror high-confidence knowledge to MEMORY.md
+        if let Ok(mirrored) = self.mirror_to_memory(0.8) {
+            if mirrored > 0 {
+                tracing::info!("Mirrored {} high-confidence entries to MEMORY.md", mirrored);
             }
         }
 
@@ -295,7 +327,7 @@ mod tests {
 
     fn make_engine() -> LearningEngine {
         let store = KnowledgeStore::new_in_memory().expect("failed to create store");
-        LearningEngine::new(store, 1.2, 0.75, None, "test-model".to_string(), false)
+        LearningEngine::new(store, 1.2, 0.75, None, "test-model".to_string(), false, std::path::PathBuf::from("/tmp"))
     }
 
     #[test]
