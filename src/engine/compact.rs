@@ -91,7 +91,7 @@ fn compact_message(message: &ConversationMessage) -> ConversationMessage {
 }
 
 /// Estimate total tokens in messages
-fn estimate_tokens(messages: &[ConversationMessage]) -> u32 {
+pub(crate) fn estimate_tokens(messages: &[ConversationMessage]) -> u32 {
     let total_chars: usize = messages
         .iter()
         .flat_map(|m| &m.content)
@@ -125,6 +125,14 @@ pub fn auto_compact_if_needed(
     (compacted, was_compacted)
 }
 
+/// Check if smart compaction should be used instead of naive compaction.
+///
+/// Returns `true` when the estimated token count meets or exceeds the given
+/// threshold, or when the message count exceeds 50.
+pub fn should_use_smart_compaction(messages: &[ConversationMessage], token_threshold: u32) -> bool {
+    estimate_tokens(messages) >= token_threshold || messages.len() > 50
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +160,24 @@ mod tests {
         ];
         let tokens = estimate_tokens(&messages);
         assert!(tokens > 0);
+    }
+
+    #[test]
+    fn test_should_use_smart_compaction_threshold() {
+        // Under threshold with few messages => false
+        let messages = vec![
+            ConversationMessage::user_text("Hello"),
+            ConversationMessage::assistant_text("Hi"),
+        ];
+        assert!(!should_use_smart_compaction(&messages, 50000));
+    }
+
+    #[test]
+    fn test_should_use_smart_compaction_many_messages() {
+        // More than 50 messages => true regardless of token count
+        let messages: Vec<ConversationMessage> = (0..60)
+            .map(|i| ConversationMessage::user_text(format!("msg {}", i)))
+            .collect();
+        assert!(should_use_smart_compaction(&messages, 50000));
     }
 }
