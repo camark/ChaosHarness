@@ -55,6 +55,58 @@ fn default_true() -> bool { true }
 fn default_max_files() -> u32 { 5 }
 fn default_max_entrypoint_lines() -> u32 { 200 }
 
+fn default_bm25_top_k() -> usize { 5 }
+fn default_bm25_k1() -> f64 { 1.2 }
+fn default_bm25_b() -> f64 { 0.75 }
+fn default_summary_token_threshold() -> u32 { 30000 }
+fn default_summary_segment_size() -> usize { 20 }
+fn default_pattern_promotion_threshold() -> i64 { 3 }
+fn default_max_context_injection_tokens() -> usize { 2000 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearningSettings {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub knowledge_db_path: Option<String>,
+    #[serde(default = "default_bm25_top_k")]
+    pub bm25_top_k: usize,
+    #[serde(default = "default_bm25_k1")]
+    pub bm25_k1: f64,
+    #[serde(default = "default_bm25_b")]
+    pub bm25_b: f64,
+    #[serde(default = "default_summary_token_threshold")]
+    pub summary_token_threshold: u32,
+    #[serde(default = "default_summary_segment_size")]
+    pub summary_segment_size: usize,
+    #[serde(default = "default_true")]
+    pub session_end_extraction: bool,
+    #[serde(default = "default_true")]
+    pub auto_skill_generation: bool,
+    #[serde(default = "default_pattern_promotion_threshold")]
+    pub pattern_promotion_threshold: i64,
+    #[serde(default = "default_max_context_injection_tokens")]
+    pub max_context_injection_tokens: usize,
+}
+
+impl Default for LearningSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            knowledge_db_path: None,
+            bm25_top_k: 5,
+            bm25_k1: 1.2,
+            bm25_b: 0.75,
+            summary_token_threshold: 30000,
+            summary_segment_size: 20,
+            session_end_extraction: true,
+            auto_skill_generation: true,
+            pattern_promotion_threshold: 3,
+            max_context_injection_tokens: 2000,
+        }
+    }
+}
+
 impl Default for MemorySettings {
     fn default() -> Self {
         Self {
@@ -106,6 +158,8 @@ pub struct Settings {
     #[serde(default)]
     pub hooks: HooksSettings,
     #[serde(default)]
+    pub learning: LearningSettings,
+    #[serde(default)]
     pub enabled_plugins: HashMap<String, bool>,
     /// MCP servers configuration
     #[serde(default, alias = "mcp_servers", rename = "mcpServers")]
@@ -148,6 +202,7 @@ impl Default for Settings {
             permission: PermissionSettings::default(),
             memory: MemorySettings::default(),
             hooks: HooksSettings::default(),
+            learning: LearningSettings::default(),
             enabled_plugins: HashMap::new(),
             mcp_servers: HashMap::new(),
             theme: "default".to_string(),

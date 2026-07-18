@@ -20,6 +20,7 @@ mod tools;
 mod ui;
 mod tui_frontend;
 mod acp;
+mod learning;
 
 pub use ui::repl;
 
