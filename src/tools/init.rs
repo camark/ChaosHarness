@@ -59,6 +59,10 @@ use crate::tools::remote_trigger::RemoteTriggerTool;
 // LSP tool
 use crate::tools::lsp::LspTool;
 
+// Multi-agent tools
+use crate::tools::swarm_create::SwarmCreateTool;
+use crate::tools::swarm_run::SwarmRunTool;
+
 use std::env;
 use std::env::current_dir;
 
@@ -122,6 +126,10 @@ pub async fn init_tools() -> ToolRegistry {
 
     // Register LSP tool
     registry.register(LspTool).await;
+
+    // Register multi-agent tools
+    registry.register(SwarmCreateTool).await;
+    registry.register(SwarmRunTool).await;
 
     registry
 }

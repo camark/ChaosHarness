@@ -42,7 +42,7 @@ pub struct TaskResult {
 }
 
 /// Coordinator state
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct CoordinatorState {
     pub pending_tasks: Vec<Task>,
     pub active_tasks: HashMap<String, TaskAssignment>,
@@ -161,6 +161,79 @@ impl Coordinator {
             .with_target(to);
         self.message_tx.send(msg)?;
         Ok(())
+    }
+
+    /// Execute a task with a specific agent
+    pub async fn execute_task(&self, task_id: &str) -> anyhow::Result<String> {
+        let state = self.state.lock().await;
+        let assignment = state.active_tasks.get(task_id)
+            .ok_or_else(|| anyhow::anyhow!("Task not found: {}", task_id))?;
+
+        let agent_id = assignment.assigned_to.clone();
+        let description = assignment.description.clone();
+        drop(state);
+
+        // Get the agent and execute
+        let state = self.state.lock().await;
+        let agent = state.agents.get(&agent_id)
+            .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", agent_id))?
+            .clone();
+        drop(state);
+
+        let result = agent.execute_task(&description).await?;
+
+        // Update task status
+        let mut state = self.state.lock().await;
+        if let Some(assignment) = state.active_tasks.get_mut(task_id) {
+            assignment.status = TaskStatus::Completed;
+        }
+
+        state.completed_tasks.push(TaskResult {
+            task_id: task_id.to_string(),
+            agent_id: agent_id.clone(),
+            success: true,
+            output: result.clone(),
+            metadata: None,
+        });
+
+        Ok(result)
+    }
+
+    /// Execute all pending tasks
+    pub async fn execute_all_pending(&self) -> anyhow::Result<Vec<TaskResult>> {
+        let pending_task_ids: Vec<String> = {
+            let state = self.state.lock().await;
+            state.active_tasks.iter()
+                .filter(|(_, a)| a.status == TaskStatus::Pending)
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+
+        let mut results = Vec::new();
+        for task_id in pending_task_ids {
+            match self.execute_task(&task_id).await {
+                Ok(output) => {
+                    results.push(TaskResult {
+                        task_id,
+                        agent_id: String::new(),
+                        success: true,
+                        output,
+                        metadata: None,
+                    });
+                }
+                Err(e) => {
+                    results.push(TaskResult {
+                        task_id,
+                        agent_id: String::new(),
+                        success: false,
+                        output: e.to_string(),
+                        metadata: None,
+                    });
+                }
+            }
+        }
+
+        Ok(results)
     }
 }
 

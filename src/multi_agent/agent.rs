@@ -1,7 +1,5 @@
 //! Agent definition and state management
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -76,7 +74,7 @@ impl Default for AgentConfig {
 }
 
 /// Agent instance
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Agent {
     pub config: AgentConfig,
     pub state: Arc<Mutex<AgentState>>,
@@ -131,6 +129,41 @@ impl Agent {
     pub async fn clear_history(&self) {
         let mut history = self.message_history.lock().await;
         history.clear();
+    }
+
+    /// Execute a task using the agent
+    /// This creates a QueryEngine and runs the task
+    pub async fn execute_task(&self, task: &str) -> anyhow::Result<String> {
+        self.set_state(AgentState::Thinking).await;
+
+        // Store task in history
+        self.add_message(ConversationMessage::user_text(task.to_string())).await;
+
+        // Create a new QueryEngine for this agent
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let tool_registry = crate::tools::init::init_tools().await;
+        let mut engine = crate::engine::query::QueryEngine::new(
+            self.settings.clone(),
+            tool_registry,
+            cwd,
+        ).map_err(|e| anyhow::anyhow!("Failed to create query engine: {}", e))?;
+
+        // Load existing history
+        let history = self.get_history().await;
+        engine.load_messages(history.iter().map(|m| serde_json::to_value(m).unwrap()).collect()).await;
+
+        self.set_state(AgentState::Executing).await;
+
+        // Execute the task
+        let response = engine.send_message(task.to_string()).await
+            .map_err(|e| anyhow::anyhow!("Execution error: {}", e))?;
+
+        // Store the response
+        self.add_message(ConversationMessage::assistant_text(response.clone())).await;
+
+        self.set_state(AgentState::Completed).await;
+
+        Ok(response)
     }
 }
 

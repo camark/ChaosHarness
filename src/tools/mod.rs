@@ -59,5 +59,9 @@ pub mod remote_trigger;
 // LSP tool
 pub mod lsp;
 
+// Multi-agent tools
+pub mod swarm_create;
+pub mod swarm_run;
+
 pub use base::ToolRegistry;
 pub use init::init_tools;

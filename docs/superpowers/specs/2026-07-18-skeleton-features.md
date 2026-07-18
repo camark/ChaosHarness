@@ -31,7 +31,7 @@
 
 ## 模块级 skeleton
 
-- [ ] `multi_agent/` — 结构完整但未接入 query loop
+- [x] `multi_agent/` — 已接入 query loop，支持 swarm 创建和任务执行
 
 ## 实现顺序
 
