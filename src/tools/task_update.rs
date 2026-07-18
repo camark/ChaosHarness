@@ -1,6 +1,7 @@
 //! TaskUpdate tool - Update task metadata
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::task_manager::{GLOBAL_TASK_MANAGER, TaskStatus};
 use anyhow::Result;
 use serde_json::Value;
 
@@ -12,6 +13,11 @@ pub fn task_update_input_schema() -> Value {
             "task_id": {
                 "type": "string",
                 "description": "Task identifier"
+            },
+            "status": {
+                "type": "string",
+                "description": "New task status",
+                "enum": ["running", "completed", "failed", "stopped"]
             },
             "description": {
                 "type": "string",
@@ -61,6 +67,7 @@ impl Tool for TaskUpdateTool {
         let description = input["description"].as_str();
         let progress = input["progress"].as_i64();
         let status_note = input["status_note"].as_str();
+        let status_str = input["status"].as_str();
 
         // Validate progress range if provided
         if let Some(p) = progress {
@@ -71,8 +78,24 @@ impl Tool for TaskUpdateTool {
             }
         }
 
-        // In a full implementation, this would update the task
-        // For now, just acknowledge the update
+        // Check task exists
+        let task = GLOBAL_TASK_MANAGER.get_task(task_id).await;
+        if task.is_none() {
+            return Ok(ToolResult::error(format!("Task {} not found", task_id)));
+        }
+
+        // Update status if provided
+        if let Some(status_str) = status_str {
+            let status = match status_str {
+                "running" => TaskStatus::Running,
+                "completed" => TaskStatus::Completed,
+                "failed" => TaskStatus::Failed,
+                "stopped" => TaskStatus::Stopped,
+                _ => return Ok(ToolResult::error(format!("Invalid status: {}", status_str))),
+            };
+            GLOBAL_TASK_MANAGER.update_task_status(task_id, status).await;
+        }
+
         let mut updates = Vec::new();
         if let Some(desc) = description {
             updates.push(format!("description={}", desc));
@@ -82,6 +105,9 @@ impl Tool for TaskUpdateTool {
         }
         if let Some(note) = status_note {
             updates.push(format!("note={}", note));
+        }
+        if let Some(s) = status_str {
+            updates.push(format!("status={}", s));
         }
 
         let output = if updates.is_empty() {
@@ -101,9 +127,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_update_description() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("update desc", "echo hi").await;
+
         let tool = TaskUpdateTool;
         let input = serde_json::json!({
-            "task_id": "test-123",
+            "task_id": id,
             "description": "New description"
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
@@ -115,9 +143,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_update_progress() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("update progress", "echo hi").await;
+
         let tool = TaskUpdateTool;
         let input = serde_json::json!({
-            "task_id": "test-123",
+            "task_id": id,
             "progress": 50
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
@@ -129,9 +159,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_update_invalid_progress() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("bad progress", "echo hi").await;
+
         let tool = TaskUpdateTool;
         let input = serde_json::json!({
-            "task_id": "test-123",
+            "task_id": id,
             "progress": 150
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
@@ -139,5 +171,35 @@ mod tests {
 
         assert!(result.is_error);
         assert!(result.output.contains("0 and 100"));
+    }
+
+    #[tokio::test]
+    async fn test_task_update_status() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("update status", "echo hi").await;
+
+        let tool = TaskUpdateTool;
+        let input = serde_json::json!({
+            "task_id": id,
+            "status": "completed"
+        });
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.output.contains("status=completed"));
+    }
+
+    #[tokio::test]
+    async fn test_task_update_not_found() {
+        let tool = TaskUpdateTool;
+        let input = serde_json::json!({
+            "task_id": "nonexistent",
+            "status": "completed"
+        });
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 }

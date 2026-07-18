@@ -1,6 +1,7 @@
 //! TaskOutput tool - Read task output
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::task_manager::GLOBAL_TASK_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -51,7 +52,7 @@ impl Tool for TaskOutputTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'task_id' field"))?;
 
-        let max_bytes = input["max_bytes"].as_i64().unwrap_or(12000);
+        let max_bytes = input["max_bytes"].as_i64().unwrap_or(12000) as usize;
 
         // Validate max_bytes range
         if max_bytes < 1 || max_bytes > 100000 {
@@ -60,11 +61,18 @@ impl Tool for TaskOutputTool {
             ));
         }
 
-        // In a full implementation, this would read task output
-        // For now, return a placeholder response
-        tracing::info!("Reading output for task {} (max {} bytes)", task_id, max_bytes);
+        let output = GLOBAL_TASK_MANAGER.get_task_output(task_id, max_bytes).await;
 
-        Ok(ToolResult::success(format!("(no output for task {})", task_id)))
+        match output {
+            Some(output) => {
+                if output.is_empty() {
+                    Ok(ToolResult::success(format!("(no output for task {})", task_id)))
+                } else {
+                    Ok(ToolResult::success(output))
+                }
+            }
+            None => Ok(ToolResult::error(format!("Task {} not found", task_id))),
+        }
     }
 }
 
@@ -74,26 +82,30 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_task_output() {
+    async fn test_task_output_with_content() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("output test", "echo test_output_123").await;
+
+        // Wait for task to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
         let tool = TaskOutputTool;
-        let input = serde_json::json!({"task_id": "test-123"});
+        let input = serde_json::json!({"task_id": id});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
+        assert!(result.output.contains("test_output_123"));
     }
 
     #[tokio::test]
-    async fn test_task_output_with_max_bytes() {
+    async fn test_task_output_not_found() {
         let tool = TaskOutputTool;
-        let input = serde_json::json!({
-            "task_id": "test-123",
-            "max_bytes": 5000
-        });
+        let input = serde_json::json!({"task_id": "nonexistent"});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
-        assert!(!result.is_error);
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 
     #[tokio::test]

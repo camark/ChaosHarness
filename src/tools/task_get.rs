@@ -1,6 +1,7 @@
 //! TaskGet tool - Get task details
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::task_manager::GLOBAL_TASK_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -44,11 +45,33 @@ impl Tool for TaskGetTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'task_id' field"))?;
 
-        // In a full implementation, this would query the task manager
-        // For now, return a placeholder response
-        let output = format!("Task {} not found", task_id);
+        let task = GLOBAL_TASK_MANAGER.get_task(task_id).await;
 
-        Ok(ToolResult::error(output))
+        match task {
+            Some(task) => {
+                let output = format!(
+                    "Task: {} ({})\n\
+                     Description: {}\n\
+                     Status: {}\n\
+                     Created: {}\n\
+                     {}",
+                    task.id,
+                    task.task_type.as_str(),
+                    task.description,
+                    task.status.as_str(),
+                    task.created_at.format("%Y-%m-%d %H:%M:%S UTC"),
+                    if let Some(cmd) = &task.command {
+                        format!("Command: {}", cmd)
+                    } else if let Some(prompt) = &task.prompt {
+                        format!("Prompt: {}", prompt)
+                    } else {
+                        String::new()
+                    }
+                );
+                Ok(ToolResult::success(output))
+            }
+            None => Ok(ToolResult::error(format!("Task {} not found", task_id))),
+        }
     }
 }
 
@@ -58,9 +81,22 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_task_get() {
+    async fn test_task_get_existing() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("get test", "echo get").await;
+
         let tool = TaskGetTool;
-        let input = serde_json::json!({"task_id": "test-123"});
+        let input = serde_json::json!({"task_id": id});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.output.contains("get test"));
+    }
+
+    #[tokio::test]
+    async fn test_task_get_not_found() {
+        let tool = TaskGetTool;
+        let input = serde_json::json!({"task_id": "nonexistent"});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 

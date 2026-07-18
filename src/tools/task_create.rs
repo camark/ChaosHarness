@@ -1,6 +1,7 @@
 //! TaskCreate tool - Create a background task
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::task_manager::GLOBAL_TASK_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -69,13 +70,11 @@ impl Tool for TaskCreateTool {
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("'command' is required for local_bash tasks"))?;
 
-                // In a full implementation, this would create a background shell task
-                // For now, just acknowledge the creation
-                tracing::info!("Creating bash task: {} - {}", description, command);
+                let id = GLOBAL_TASK_MANAGER.create_bash_task(description, command).await;
 
                 Ok(ToolResult::success(format!(
-                    "Created bash task: {} (command: {})",
-                    description, command
+                    "Created bash task {} (command: {})",
+                    id, command
                 )))
             }
             "local_agent" => {
@@ -85,12 +84,11 @@ impl Tool for TaskCreateTool {
 
                 let model = input["model"].as_str().unwrap_or("claude-sonnet-4-6");
 
-                // In a full implementation, this would create an agent task
-                tracing::info!("Creating agent task: {} - {}", description, prompt);
+                let id = GLOBAL_TASK_MANAGER.create_agent_task(description, prompt, model).await;
 
                 Ok(ToolResult::success(format!(
-                    "Created agent task: {} (model: {}, prompt: {})",
-                    description, model, prompt
+                    "Created agent task {} (model: {}, prompt: {})",
+                    id, model, prompt
                 )))
             }
             _ => Ok(ToolResult::error(format!(
@@ -146,7 +144,6 @@ mod tests {
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await;
 
-        // Should return an error result
         assert!(result.is_err() || result.unwrap().is_error);
     }
 }

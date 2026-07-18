@@ -1,6 +1,7 @@
-//! TaskStop tool - Stop a background task
+//! TaskStop tool - Stop a running task
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::services::task_manager::GLOBAL_TASK_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -28,7 +29,7 @@ impl Tool for TaskStopTool {
     }
 
     fn description(&self) -> &'static str {
-        "Stop a background task."
+        "Stop a running background task."
     }
 
     fn input_schema(&self) -> Value {
@@ -44,11 +45,22 @@ impl Tool for TaskStopTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'task_id' field"))?;
 
-        // In a full implementation, this would stop the task
-        // For now, just acknowledge the stop
-        tracing::info!("Stopping task: {}", task_id);
+        let stopped = GLOBAL_TASK_MANAGER.stop_task(task_id).await;
 
-        Ok(ToolResult::success(format!("Stopped task {}", task_id)))
+        if stopped {
+            Ok(ToolResult::success(format!("Stopped task {}", task_id)))
+        } else {
+            // Check if task exists
+            let task = GLOBAL_TASK_MANAGER.get_task(task_id).await;
+            match task {
+                Some(task) => Ok(ToolResult::error(format!(
+                    "Task {} is not running (status: {})",
+                    task_id,
+                    task.status.as_str()
+                ))),
+                None => Ok(ToolResult::error(format!("Task {} not found", task_id))),
+            }
+        }
     }
 }
 
@@ -58,23 +70,41 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_task_stop() {
+    async fn test_task_stop_running() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("stop test", "sleep 100").await;
+
         let tool = TaskStopTool;
-        let input = serde_json::json!({"task_id": "test-123"});
+        let input = serde_json::json!({"task_id": id});
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
         assert!(!result.is_error);
-        assert!(result.output.contains("Stopped task"));
+        assert!(result.output.contains("Stopped"));
     }
 
     #[tokio::test]
-    async fn test_task_stop_missing_id() {
-        let tool = TaskStopTool;
-        let input = serde_json::json!({});
-        let context = ToolExecutionContext::new(PathBuf::from("."));
-        let result = tool.execute(input, context).await;
+    async fn test_task_stop_completed() {
+        let id = GLOBAL_TASK_MANAGER.create_bash_task("completed", "echo done").await;
 
-        assert!(result.is_err());
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        let tool = TaskStopTool;
+        let input = serde_json::json!({"task_id": id});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.output.contains("not running"));
+    }
+
+    #[tokio::test]
+    async fn test_task_stop_not_found() {
+        let tool = TaskStopTool;
+        let input = serde_json::json!({"task_id": "nonexistent"});
+        let context = ToolExecutionContext::new(PathBuf::from("."));
+        let result = tool.execute(input, context).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.output.contains("not found"));
     }
 }
