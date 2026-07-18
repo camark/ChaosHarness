@@ -122,3 +122,10 @@ pub struct LearningResult {
     pub patterns_extracted: usize,
     pub skills_generated: usize,
 }
+
+/// An item extracted from a conversation — either a knowledge entry or a pattern.
+#[derive(Debug, Clone)]
+pub enum ExtractedItem {
+    Knowledge(KnowledgeEntry),
+    Pattern(Pattern),
+}
