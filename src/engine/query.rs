@@ -10,6 +10,10 @@ use crate::engine::messages::{
 };
 use crate::hooks::executor::HookExecutor;
 use crate::hooks::registry::HookRegistry;
+use crate::learning::retriever::ContextRetriever;
+use crate::learning::store::KnowledgeStore;
+use crate::learning::summarizer::SmartCompactor;
+use crate::learning::extractor::LearningEngine;
 use crate::permissions::checker::PermissionChecker;
 use crate::tools::base::{ToolExecutionContext, ToolRegistry};
 use crate::mcp::client::McpManager;
@@ -45,6 +49,9 @@ pub struct QueryEngine {
     max_turns: usize,
     use_openai_format: bool,
     mcp_manager: Option<Arc<McpManager>>,
+    pub context_retriever: Option<ContextRetriever>,
+    pub smart_compactor: Option<SmartCompactor>,
+    pub learning_engine: Option<LearningEngine>,
 }
 
 impl QueryEngine {
@@ -87,6 +94,56 @@ impl QueryEngine {
         // Initialize MCP manager if servers are configured
         let mcp_manager: Option<Arc<McpManager>> = None; // Will be initialized below
 
+        // Initialize learning system if enabled
+        let (context_retriever, smart_compactor, learning_engine) = if settings.learning.enabled {
+            let db_path = settings.learning.knowledge_db_path.as_ref()
+                .map(|p| std::path::PathBuf::from(p))
+                .unwrap_or_else(|| {
+                    cwd.join(".rust_harness").join("knowledge.db")
+                });
+
+            // Ensure parent directory exists
+            if let Some(parent) = db_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+
+            match KnowledgeStore::new(&db_path) {
+                Ok(store) => {
+                    let retriever = ContextRetriever::new(
+                        store,
+                        settings.learning.bm25_k1,
+                        settings.learning.bm25_b,
+                        settings.learning.bm25_top_k,
+                        settings.learning.max_context_injection_tokens,
+                    );
+
+                    let compactor = SmartCompactor::new(
+                        ApiClient::new(api_key.clone(), settings.base_url.clone()),
+                        settings.model.clone(),
+                        settings.learning.summary_segment_size,
+                        settings.learning.summary_token_threshold,
+                    );
+
+                    let extractor = LearningEngine::new(
+                        KnowledgeStore::new(&db_path).unwrap(),
+                        settings.learning.bm25_k1,
+                        settings.learning.bm25_b,
+                        Some(ApiClient::new(api_key.clone(), settings.base_url.clone())),
+                        settings.model.clone(),
+                        settings.learning.session_end_extraction,
+                    );
+
+                    (Some(retriever), Some(compactor), Some(extractor))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize learning system: {}", e);
+                    (None, None, None)
+                }
+            }
+        } else {
+            (None, None, None)
+        };
+
         Ok(Self {
             client,
             tool_registry,
@@ -99,6 +156,9 @@ impl QueryEngine {
             max_turns: 200,
             use_openai_format,
             mcp_manager,
+            context_retriever,
+            smart_compactor,
+            learning_engine,
         })
     }
 
@@ -193,13 +253,46 @@ impl QueryEngine {
                 }
             }
 
+            // Retrieve relevant context from knowledge base
+            let mut enriched_system_prompt = self.settings.system_prompt.clone();
+
+            if let Some(ref retriever) = self.context_retriever {
+                let current_query = {
+                    let messages = self.messages.lock().await;
+                    messages.last()
+                        .filter(|m| m.role == MessageRole::User)
+                        .and_then(|m| m.content.first())
+                        .and_then(|c| match c {
+                            MessageContent::Text { text } => Some(text.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
+
+                if !current_query.is_empty() {
+                    if let Ok(contexts) = retriever.retrieve(&current_query) {
+                        let context_section = retriever.format_for_prompt(&contexts);
+                        if !context_section.is_empty() {
+                            enriched_system_prompt = Some(match enriched_system_prompt {
+                                Some(mut prompt) => {
+                                    prompt.push_str("\n\n");
+                                    prompt.push_str(&context_section);
+                                    prompt
+                                }
+                                None => context_section,
+                            });
+                        }
+                    }
+                }
+            }
+
             let messages = self.messages.lock().await.clone();
 
             // Call API
             let request = ApiRequest {
                 model: self.settings.model.clone(),
                 messages,
-                system_prompt: self.settings.system_prompt.clone(),
+                system_prompt: enriched_system_prompt,
                 max_tokens: self.settings.max_tokens,
                 tools: tools_schema.clone(),
             };
@@ -419,6 +512,9 @@ impl Clone for QueryEngine {
             max_turns: self.max_turns,
             use_openai_format: self.use_openai_format,
             mcp_manager: self.mcp_manager.clone(),
+            context_retriever: None,
+            smart_compactor: None,
+            learning_engine: None,
         }
     }
 }

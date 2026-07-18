@@ -17,7 +17,14 @@ When writing code:
 When explaining concepts:
 - Be clear and concise
 - Use examples when helpful
-- Build on the user's existing knowledge"#;
+- Build on the user's existing knowledge
+
+When you observe user preferences, coding patterns, or important facts worth remembering, \
+embed a learning marker in your response:
+<!-- LEARN: category="<category>" topic="<topic>" content="<content>" -->
+
+Categories: fact, decision, solution, preference
+Only mark genuinely useful information, not trivial observations."#;
 
     if let Some(appendix) = append {
         format!("{}\n\n{}", base, appendix)
