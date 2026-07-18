@@ -137,6 +137,30 @@ pub async fn run_repl(_args: &Args, settings: Settings) -> Result<()> {
         rl.add_history_entry(input)?;
     }
 
+    // Run learning engine at session end
+    if query_engine.learning_engine.is_some() {
+        let messages = query_engine.get_messages().await;
+        if !messages.is_empty() {
+            let session_id = "session-".to_string() + &chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+            if let Some(ref learning_engine) = query_engine.learning_engine {
+                match learning_engine.process_session(&messages, &session_id) {
+                    Ok(result) => {
+                        if result.knowledge_extracted > 0 || result.patterns_extracted > 0 {
+                            tracing::info!(
+                                "Learning: extracted {} knowledge entries, {} patterns",
+                                result.knowledge_extracted,
+                                result.patterns_extracted
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Learning engine error: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
