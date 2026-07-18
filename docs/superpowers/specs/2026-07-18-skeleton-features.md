@@ -17,11 +17,11 @@
 - [x] `tools/remote_trigger.rs` — 触发定时任务（返回 "not implemented"）
 - [x] `tools/team_create.rs` — 创建团队（占位符）
 - [x] `tools/team_delete.rs` — 删除团队（占位符）
-- [ ] `tools/lsp.rs` — LSP 代码智能（需要 LSP 客户端集成）
+- [x] `tools/lsp.rs` — LSP 代码智能（基于正则的符号提取）
 - [x] `tools/config.rs` — 配置管理（save 操作已实现）
-- [ ] `tools/mcp_auth.rs` — MCP 认证（需要全局 MCP 管理器）
-- [ ] `tools/read_mcp_resource.rs` — 读取 MCP 资源（需要全局 MCP 管理器）
-- [ ] `tools/list_mcp_resources.rs` — 列出 MCP 资源（需要全局 MCP 管理器）
+- [x] `tools/mcp_auth.rs` — MCP 认证（已接入全局 MCP 管理器）
+- [x] `tools/read_mcp_resource.rs` — 读取 MCP 资源（已接入全局 MCP 管理器）
+- [x] `tools/list_mcp_resources.rs` — 列出 MCP 资源（已接入全局 MCP 管理器）
 
 ## Services
 

@@ -1,6 +1,7 @@
 //! ReadMcpResource tool - Read an MCP resource
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::mcp::client::GLOBAL_MCP_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -52,14 +53,27 @@ impl Tool for ReadMcpResourceTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'uri' field"))?;
 
-        // In a full implementation, this would call the MCP client
-        // to read the resource from the server
-        tracing::info!("Reading MCP resource from server '{}' at URI '{}'", server, uri);
+        let manager = GLOBAL_MCP_MANAGER.lock().await;
 
-        Ok(ToolResult::success(format!(
-            "(MCP resource reading not implemented - server: {}, uri: {})",
-            server, uri
-        )))
+        match manager.read_resource(server, uri).await {
+            Ok(content) => {
+                let mut output = String::new();
+                output.push_str(&format!("Resource: {}\n", content.uri));
+                output.push_str(&format!("MIME Type: {}\n", content.mime_type));
+
+                if let Some(text) = content.text {
+                    output.push_str(&format!("\n{}", text));
+                } else if let Some(blob) = content.blob {
+                    output.push_str(&format!("\n[Binary data: {} bytes]", blob.len()));
+                }
+
+                Ok(ToolResult::success(output))
+            }
+            Err(e) => Ok(ToolResult::error(format!(
+                "Failed to read resource '{}' from '{}': {}",
+                uri, server, e
+            ))),
+        }
     }
 }
 
@@ -69,16 +83,18 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
-    async fn test_read_mcp_resource() {
+    async fn test_read_mcp_resource_no_server() {
         let tool = ReadMcpResourceTool;
         let input = serde_json::json!({
-            "server": "test-server",
+            "server": "nonexistent-server",
             "uri": "file:///test.txt"
         });
         let context = ToolExecutionContext::new(PathBuf::from("."));
         let result = tool.execute(input, context).await.unwrap();
 
-        assert!(!result.is_error);
+        // Should fail because no server is connected
+        assert!(result.is_error);
+        assert!(result.output.contains("Failed to read resource"));
     }
 
     #[tokio::test]

@@ -1,6 +1,7 @@
 //! ListMcpResources tool - List MCP resources
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::mcp::client::GLOBAL_MCP_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -34,11 +35,31 @@ impl Tool for ListMcpResourcesTool {
     }
 
     async fn execute(&self, _input: Value, _context: ToolExecutionContext) -> Result<ToolResult> {
-        // In a full implementation, this would query the MCP manager
-        // for all available resources from connected servers
-        tracing::info!("Listing MCP resources");
+        let manager = GLOBAL_MCP_MANAGER.lock().await;
+        let resources = manager.list_all_resources().await;
 
-        Ok(ToolResult::success("(no MCP resources)".to_string()))
+        if resources.is_empty() {
+            return Ok(ToolResult::success(
+                "No MCP resources available. Connect to an MCP server first.".to_string()
+            ));
+        }
+
+        let mut output = String::new();
+        output.push_str("MCP Resources:\n\n");
+
+        for (server, resource) in &resources {
+            output.push_str(&format!("[{}] {}", server, resource.name));
+            if let Some(desc) = &resource.description {
+                output.push_str(&format!(" - {}", desc));
+            }
+            output.push_str(&format!(" ({})", resource.uri));
+            if let Some(mime) = &resource.mime_type {
+                output.push_str(&format!(" [{}]", mime));
+            }
+            output.push('\n');
+        }
+
+        Ok(ToolResult::success(output.trim_end().to_string()))
     }
 }
 

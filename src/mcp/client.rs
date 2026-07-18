@@ -505,6 +505,58 @@ impl McpManager {
 
         client.call_tool(tool_name, arguments).await
     }
+
+    /// List resources for a specific server
+    pub async fn list_resources_for_server(&self, server_name: &str) -> Result<Vec<McpResource>> {
+        let mut clients = self.clients.lock().await;
+        let client = clients.get_mut(server_name)
+            .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
+
+        if !client.is_ready() {
+            bail!("Server {} is not ready", server_name);
+        }
+
+        client.list_resources().await
+    }
+
+    /// Read a resource from a specific server
+    pub async fn read_resource(&self, server_name: &str, uri: &str) -> Result<ResourceContent> {
+        let clients = self.clients.lock().await;
+        let client = clients.get(server_name)
+            .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
+
+        if !client.is_ready() {
+            bail!("Server {} is not ready", server_name);
+        }
+
+        client.read_resource(uri).await
+    }
+
+    /// Get list of all resources from all connected servers
+    pub async fn list_all_resources(&self) -> Vec<(String, McpResource)> {
+        let mut clients = self.clients.lock().await;
+        let mut all_resources = Vec::new();
+
+        for (server_name, client) in clients.iter_mut() {
+            if client.is_ready() {
+                if let Ok(resources) = client.list_resources().await {
+                    for resource in resources {
+                        all_resources.push((server_name.clone(), resource));
+                    }
+                }
+            }
+        }
+
+        all_resources
+    }
+}
+
+/// Global MCP manager instance
+lazy_static::lazy_static! {
+    pub static ref GLOBAL_MCP_MANAGER: tokio::sync::Mutex<McpManager> = {
+        let settings = crate::config::load_settings(None).unwrap_or_default();
+        tokio::sync::Mutex::new(McpManager::new(settings))
+    };
 }
 
 use tracing::{info, error};

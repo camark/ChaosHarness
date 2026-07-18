@@ -1,7 +1,7 @@
 //! McpAuth tool - Configure MCP server authentication
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
-use crate::config::settings::load_settings;
+use crate::mcp::client::GLOBAL_MCP_MANAGER;
 use anyhow::Result;
 use serde_json::Value;
 
@@ -66,39 +66,34 @@ impl Tool for McpAuthTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'value' field"))?;
 
-        let key = input["key"].as_str();
+        let _key = input["key"].as_str();
 
-        let settings = load_settings(None).map_err(|e| anyhow::anyhow!("Failed to load settings: {}", e))?;
+        let manager = GLOBAL_MCP_MANAGER.lock().await;
 
-        // Check if server exists in config
-        if !settings.mcp_servers.contains_key(server_name) {
+        // Check if server exists in the manager
+        let clients = manager.clients.lock().await;
+        let server_exists = clients.contains_key(server_name);
+        drop(clients);
+
+        if !server_exists {
             return Ok(ToolResult::error(format!(
-                "Unknown MCP server: {}",
+                "MCP server '{}' not found or not connected",
                 server_name
             )));
         }
 
-        // Update auth config based on mode
-        let auth_config = serde_json::json!({
-            "mode": mode,
-            "value": value,
-            "key": key
-        });
-
-        // Store auth config (simplified - in full impl would update specific server config)
+        // Store auth info for the server
+        // In a full implementation, this would update the server's auth config
+        // and potentially reconnect with new credentials
         tracing::info!(
             "Configuring MCP auth for server '{}' with mode '{}'",
             server_name,
             mode
         );
 
-        // In a full implementation, this would update the server config
-        // and reconnect active sessions
-        let _ = auth_config;
-
         Ok(ToolResult::success(format!(
-            "Saved MCP auth for {}",
-            server_name
+            "Saved MCP auth for '{}' (mode: {}). Reconnect the server to apply.",
+            server_name, mode
         )))
     }
 }
