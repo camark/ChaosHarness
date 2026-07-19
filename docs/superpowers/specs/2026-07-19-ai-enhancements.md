@@ -102,16 +102,17 @@
 
 ## 7. Dynamic Model Selection
 
-**Status:** ⏳ Not Started
+**Status:** ✅ Completed
 
-**TODO:**
-- [ ] Task complexity assessment
-- [ ] Auto-switch model based on task type
-- [ ] Fallback model chain on errors
-- [ ] Cost optimization (use cheaper model for simple tasks)
-- [ ] Model capability matching (code vs chat vs reasoning)
+**Done:**
+- [x] Task complexity assessment (Simple/Standard/Complex/Critical)
+- [x] Auto-switch model based on task type
+- [x] Fallback model chain on errors
+- [x] Cost optimization (use cheaper model for simple tasks)
+- [x] Model capability matching (Coding/Reasoning/Creative/Speed/LongContext/ToolUse/Vision)
+- [x] Model profiles for Anthropic models (Opus/Sonnet/Haiku)
 
-**Files:** `src/api/client.rs`, `src/engine/query.rs`
+**Files:** `src/api/model_selector.rs`
 
 ---
 
@@ -125,4 +126,4 @@
 | 4 | Tool Selection | ✅ Done |
 | 5 | Multi-turn | ✅ Done |
 | 6 | Error Recovery | ✅ Done |
-| 7 | Dynamic Model | ⏳ Pending |
+| 7 | Dynamic Model | ✅ Done |
