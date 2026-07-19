@@ -73,19 +73,29 @@ impl QueryEngine {
             url.contains("moonshot") || url.contains("openai")
         }) || api_key.starts_with("sk-");
 
-        // Build system prompt with skills section
-        let mut system_prompt = settings.system_prompt.clone();
-        if system_prompt.is_none() {
-            system_prompt = Some(crate::prompts::system_prompt::generate_system_prompt(None));
-        }
-
-        // Add skills section if skills are available
-        if let Some(skills_section) = crate::prompts::context::build_skills_section(cwd.to_str().unwrap_or("")) {
-            if let Some(ref mut prompt) = system_prompt {
+        // Build system prompt with full context
+        let cwd_str = cwd.to_str().unwrap_or(".");
+        let system_prompt = if settings.system_prompt.is_some() {
+            // User provided custom prompt - use it with context augmentation
+            let mut prompt = settings.system_prompt.clone().unwrap();
+            let context = crate::prompts::context::build_context(cwd_str);
+            if !context.is_empty() {
+                prompt.push_str("\n\n# Project Context\n\n");
+                prompt.push_str(&context);
+            }
+            if let Some(skills_section) = crate::prompts::context::build_skills_section(cwd_str) {
                 prompt.push_str("\n\n");
                 prompt.push_str(&skills_section);
             }
-        }
+            Some(prompt)
+        } else {
+            // Generate comprehensive system prompt
+            Some(crate::prompts::system_prompt::generate_system_prompt(
+                None,
+                cwd_str,
+                Some(&settings),
+            ))
+        };
 
         // Create mutable settings clone to update system_prompt
         let mut settings = settings;
@@ -415,7 +425,7 @@ impl QueryEngine {
         results
     }
 
-    /// Execute a single tool with permission checking and hooks
+    /// Execute a single tool with permission checking, hooks, and error recovery
     async fn execute_single_tool(&self, tool_use: &ToolUseData) -> ToolResultBlock {
         tracing::info!("Executing tool: {} with input: {:?}", tool_use.name, tool_use.input);
 
@@ -436,9 +446,16 @@ impl QueryEngine {
         let tool = match self.tool_registry.get(&tool_use.name).await {
             Some(t) => t,
             None => {
+                // Suggest similar tools on unknown tool
+                let suggestion = self.suggest_similar_tool(&tool_use.name);
+                let msg = if let Some(suggestion) = suggestion {
+                    format!("Unknown tool: {}. Did you mean '{}'?", tool_use.name, suggestion)
+                } else {
+                    format!("Unknown tool: {}", tool_use.name)
+                };
                 return ToolResultBlock {
                     tool_use_id: tool_use.id.clone(),
-                    content: format!("Unknown tool: {}", tool_use.name),
+                    content: msg,
                     is_error: true,
                 };
             }
@@ -461,38 +478,117 @@ impl QueryEngine {
             };
         }
 
-        // Execute the tool
+        // Execute the tool with retry logic for transient errors
         let context = ToolExecutionContext::new(self.cwd.clone());
+        let max_retries = 1; // One retry for transient errors
 
-        let result = match tool.execute(tool_use.input.clone(), context).await {
-            Ok(result) => result,
-            Err(e) => {
-                // Notify error hooks
-                self.hook_executor.notify_error(&format!("Tool execution error: {}", e)).await;
+        let mut last_error = None;
+        for attempt in 0..=max_retries {
+            match tool.execute(tool_use.input.clone(), context.clone()).await {
+                Ok(result) => {
+                    let tool_result = ToolResultBlock {
+                        tool_use_id: tool_use.id.clone(),
+                        content: result.output.clone(),
+                        is_error: result.is_error,
+                    };
 
-                return ToolResultBlock {
-                    tool_use_id: tool_use.id.clone(),
-                    content: format!("Tool execution error: {}", e),
-                    is_error: true,
-                };
+                    // Execute post_tool_use hooks
+                    self.hook_executor.notify_post_tool_use(
+                        &tool_use.name,
+                        &tool_use.input,
+                        &result.output,
+                        result.is_error,
+                    ).await;
+
+                    // Track tool usage
+                    self.track_tool_usage(&tool_use.name, result.is_error).await;
+
+                    return tool_result;
+                }
+                Err(e) => {
+                    let error_msg = format!("{}", e);
+
+                    // Check if this is a retryable error (timeout, network, transient)
+                    let is_retryable = error_msg.contains("timeout")
+                        || error_msg.contains("timed out")
+                        || error_msg.contains("connection")
+                        || error_msg.contains("network");
+
+                    if is_retryable && attempt < max_retries {
+                        tracing::warn!("Tool {} failed (attempt {}), retrying: {}", tool_use.name, attempt + 1, error_msg);
+                        last_error = Some(error_msg);
+                        continue;
+                    }
+
+                    // Notify error hooks
+                    self.hook_executor.notify_error(&format!("Tool execution error: {}", e)).await;
+
+                    // Track failed tool usage
+                    self.track_tool_usage(&tool_use.name, true).await;
+
+                    // Provide helpful error context
+                    let error_context = self.provide_error_context(&tool_use.name, &error_msg);
+
+                    return ToolResultBlock {
+                        tool_use_id: tool_use.id.clone(),
+                        content: error_context,
+                        is_error: true,
+                    };
+                }
             }
-        };
+        }
 
-        let tool_result = ToolResultBlock {
+        // Should not reach here, but handle it
+        ToolResultBlock {
             tool_use_id: tool_use.id.clone(),
-            content: result.output.clone(),
-            is_error: result.is_error,
-        };
+            content: format!("Tool failed after retries: {}", last_error.unwrap_or_default()),
+            is_error: true,
+        }
+    }
 
-        // Execute post_tool_use hooks (non-blocking, fire and forget)
-        self.hook_executor.notify_post_tool_use(
-            &tool_use.name,
-            &tool_use.input,
-            &result.output,
-            result.is_error,
-        ).await;
+    /// Suggest similar tool name when unknown tool is used
+    fn suggest_similar_tool(&self, name: &str) -> Option<String> {
+        let tools = self.tool_registry.list_names_sync();
+        let mut best_match = None;
+        let mut best_score: f64 = 0.0;
 
-        tool_result
+        for tool_name in &tools {
+            let score = similarity_score(name, tool_name);
+            if score > best_score && score > 0.5 {
+                best_score = score;
+                best_match = Some(tool_name.clone());
+            }
+        }
+
+        best_match
+    }
+
+    /// Provide contextual error information
+    fn provide_error_context(&self, tool_name: &str, error: &str) -> String {
+        let mut context = format!("Tool execution error: {}", error);
+
+        // Add hints for common errors
+        if error.contains("No such file") || error.contains("not found") {
+            context.push_str("\n\nHint: Check if the file path is correct and the file exists.");
+        } else if error.contains("Permission denied") {
+            context.push_str("\n\nHint: Check file permissions or run with appropriate privileges.");
+        } else if error.contains("timeout") || error.contains("timed out") {
+            context.push_str("\n\nHint: The operation took too long. Try with a smaller scope or increase timeout.");
+        } else if tool_name == "bash" && error.contains("command not found") {
+            context.push_str("\n\nHint: The command may not be installed or not in PATH.");
+        }
+
+        context
+    }
+
+    /// Track tool usage statistics
+    async fn track_tool_usage(&self, tool_name: &str, is_error: bool) {
+        // Log tool usage for learning
+        if is_error {
+            tracing::warn!("Tool '{}' execution failed", tool_name);
+        } else {
+            tracing::debug!("Tool '{}' executed successfully", tool_name);
+        }
     }
 }
 
@@ -518,4 +614,61 @@ impl Clone for QueryEngine {
             learning_engine: None,
         }
     }
+}
+
+/// Simple string similarity score (Levenshtein-based)
+fn similarity_score(a: &str, b: &str) -> f64 {
+    let a_lower = a.to_lowercase();
+    let b_lower = b.to_lowercase();
+
+    // Exact match
+    if a_lower == b_lower {
+        return 1.0;
+    }
+
+    // Check if one contains the other
+    if a_lower.contains(&b_lower) || b_lower.contains(&a_lower) {
+        return 0.8;
+    }
+
+    // Check prefix match
+    let min_len = a_lower.len().min(b_lower.len());
+    if min_len > 0 {
+        let common_prefix: usize = a_lower.chars()
+            .zip(b_lower.chars())
+            .take_while(|(a, b)| a == b)
+            .count();
+
+        if common_prefix >= 3 {
+            return 0.6 + (common_prefix as f64 / min_len as f64) * 0.2;
+        }
+    }
+
+    // Levenshtein distance
+    let len_a = a_lower.len();
+    let len_b = b_lower.len();
+    let mut matrix = vec![vec![0usize; len_b + 1]; len_a + 1];
+
+    for (i, row) in matrix.iter_mut().enumerate().take(len_a + 1) {
+        row[0] = i;
+    }
+    for (j, val) in matrix[0].iter_mut().enumerate().take(len_b + 1) {
+        *val = j;
+    }
+
+    for (i, ca) in a_lower.chars().enumerate() {
+        for (j, cb) in b_lower.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            matrix[i + 1][j + 1] = (matrix[i][j + 1] + 1)
+                .min(matrix[i + 1][j] + 1)
+                .min(matrix[i][j] + cost);
+        }
+    }
+
+    let max_len = len_a.max(len_b) as f64;
+    if max_len == 0.0 {
+        return 0.0;
+    }
+
+    1.0 - (matrix[len_a][len_b] as f64 / max_len)
 }

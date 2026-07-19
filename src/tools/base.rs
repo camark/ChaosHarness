@@ -143,6 +143,16 @@ impl ToolRegistry {
         let tools = self.tools.lock().await;
         tools.is_empty()
     }
+
+    /// List all tool names synchronously (blocking)
+    pub fn list_names_sync(&self) -> Vec<String> {
+        // Use try_lock to avoid blocking
+        if let Ok(tools) = self.tools.try_lock() {
+            tools.keys().cloned().collect()
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 impl Default for ToolRegistry {
