@@ -42,15 +42,16 @@
 - [x] Knowledge store (SQLite)
 - [x] Learning extractor (LEARN markers)
 - [x] Smart compactor
+- [x] User feedback loop (FeedbackManager with positive/negative/neutral)
+- [x] Feedback statistics (tool ratings, topic ratings)
+- [x] Feedback persistence (JSON file storage)
 
 **TODO:**
 - [ ] Add semantic embedding support (local or API)
 - [ ] Cross-session knowledge persistence
-- [ ] User feedback loop (thumbs up/down on responses)
 - [ ] Preference learning from conversation patterns
-- [ ] Auto-categorize knowledge (code, decision, fact, preference)
 
-**Files:** `src/learning/`
+**Files:** `src/learning/`, `src/learning/feedback.rs`
 
 ---
 
@@ -120,7 +121,7 @@
 |---|---------|--------|
 | 1 | System Prompt | ✅ Done |
 | 2 | Context Building | ✅ Done |
-| 3 | Learning System | 🔄 Partial |
+| 3 | Learning System | 🔄 Partial (feedback added) |
 | 4 | Tool Selection | ✅ Done |
 | 5 | Multi-turn | ✅ Done |
 | 6 | Error Recovery | ✅ Done |
