@@ -382,6 +382,13 @@ async fn parse_openai_response(response: Response) -> Result<ApiMessage, ApiErro
             let input: Value = serde_json::from_str(&tool_call.function.arguments)
                 .unwrap_or_else(|_| serde_json::json!({}));
 
+            // Add to content as ToolUse (consistent with Anthropic format)
+            content.push(MessageContent::ToolUse {
+                id: tool_call.id.clone(),
+                name: tool_call.function.name.clone(),
+                input: input.clone(),
+            });
+
             tool_uses.push(ToolUseData {
                 id: tool_call.id.clone(),
                 name: tool_call.function.name.clone(),
@@ -445,10 +452,11 @@ async fn handle_error_response(response: Response) -> ApiError {
 fn is_retryable(error: &ApiError) -> bool {
     match error {
         ApiError::Network(_) => true,
+        ApiError::RateLimit(_) => true,
         ApiError::Request(msg) => {
             msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("429")
         }
-        ApiError::Authentication(_) | ApiError::RateLimit(_) | ApiError::Json(_) => false,
+        ApiError::Authentication(_) | ApiError::Json(_) => false,
     }
 }
 

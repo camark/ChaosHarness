@@ -167,8 +167,8 @@ impl PermissionChecker {
             return true;
         }
 
-        // List of tools considered safe by default
-        let safe_tools = ["read_file", "glob", "grep", "write_file", "edit_file"];
+        // List of tools considered safe by default (read-only only)
+        let safe_tools = ["read_file", "glob", "grep"];
         safe_tools.contains(&tool_name)
     }
 

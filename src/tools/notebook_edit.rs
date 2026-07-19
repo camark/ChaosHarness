@@ -98,12 +98,23 @@ impl Tool for NotebookEditTool {
 
         match edit_mode {
             "replace" => {
+                // Convert source to Jupyter format (array of lines)
+                let source_lines: Vec<String> = new_source.lines()
+                    .map(|l| format!("{}\n", l))
+                    .collect();
+                let mut source_lines = source_lines;
+                if !new_source.ends_with('\n') && !source_lines.is_empty() {
+                    if let Some(last) = source_lines.last_mut() {
+                        last.pop();
+                    }
+                }
+
                 if let Some(ref id) = cell_id {
                     // Find and replace existing cell
                     let mut found = false;
                     for cell in cells.iter_mut() {
                         if cell.get("id").and_then(|v| v.as_str()) == Some(id) {
-                            cell["source"] = json!([new_source]);
+                            cell["source"] = json!(source_lines);
                             cell["cell_type"] = json!(cell_type);
                             found = true;
                             break;
@@ -120,7 +131,7 @@ impl Tool for NotebookEditTool {
                     if cells.is_empty() {
                         cells.push(create_cell(new_source, cell_type, "1"));
                     } else {
-                        cells[0]["source"] = json!([new_source]);
+                        cells[0]["source"] = json!(source_lines);
                         cells[0]["cell_type"] = json!(cell_type);
                     }
                 }
@@ -180,9 +191,20 @@ impl Tool for NotebookEditTool {
 }
 
 fn create_cell(source: &str, cell_type: &str, id: &str) -> Value {
+    // Split source into lines for Jupyter format (array of strings)
+    let lines: Vec<String> = source.lines()
+        .map(|l| format!("{}\n", l))
+        .collect();
+    // Remove trailing newline from last line if source doesn't end with newline
+    let mut lines = lines;
+    if !source.ends_with('\n') && !lines.is_empty() {
+        if let Some(last) = lines.last_mut() {
+            last.pop(); // Remove trailing \n
+        }
+    }
     json!({
         "cell_type": cell_type,
-        "source": [source],
+        "source": lines,
         "metadata": {},
         "id": id
     })

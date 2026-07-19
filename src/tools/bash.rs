@@ -106,9 +106,10 @@ impl Tool for BashTool {
                     parts.join("\n")
                 };
 
-                // Truncate very long output
+                // Truncate very long output (safe for UTF-8)
                 if text.len() > 12000 {
-                    text = format!("{}...\n[truncated]", &text[..12000]);
+                    let end = find_char_boundary(&text, 12000);
+                    text = format!("{}...\n[truncated]", &text[..end]);
                 }
 
                 let is_error = !output.status.success();
@@ -132,6 +133,18 @@ impl Tool for BashTool {
             ))),
         }
     }
+}
+
+/// Find a valid UTF-8 char boundary at or before the given byte index
+fn find_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 #[cfg(test)]

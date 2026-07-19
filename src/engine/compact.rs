@@ -41,6 +41,18 @@ pub fn compact_messages(messages: &[ConversationMessage]) -> Vec<ConversationMes
     result
 }
 
+/// Find a valid UTF-8 char boundary at or before the given byte index
+fn find_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
 /// Compact a single message by truncating long content
 fn compact_message(message: &ConversationMessage) -> ConversationMessage {
     let max_content_length = 2000; // Characters per content block
@@ -51,10 +63,11 @@ fn compact_message(message: &ConversationMessage) -> ConversationMessage {
         .map(|content| match content {
             MessageContent::Text { text } => {
                 if text.len() > max_content_length {
+                    let start = find_char_boundary(text, text.len() - max_content_length);
                     MessageContent::Text {
                         text: format!(
                             "[truncated]...\n{}",
-                            &text[text.len() - max_content_length..]
+                            &text[start..]
                         ),
                     }
                 } else {
@@ -63,11 +76,12 @@ fn compact_message(message: &ConversationMessage) -> ConversationMessage {
             }
             MessageContent::ToolResult { tool_use_id, content, is_error } => {
                 if content.len() > max_content_length {
+                    let start = find_char_boundary(content, content.len() - max_content_length);
                     MessageContent::ToolResult {
                         tool_use_id: tool_use_id.clone(),
                         content: format!(
                             "[truncated]...\n{}",
-                            &content[content.len() - max_content_length..]
+                            &content[start..]
                         ),
                         is_error: *is_error,
                     }
