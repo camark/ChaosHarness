@@ -93,10 +93,10 @@ impl DirectoryTreeTool {
             Some(pat) => {
                 if pat.starts_with('*') && pat.ends_with('*') {
                     file_name.contains(&pat[1..pat.len()-1])
-                } else if pat.starts_with('*') {
-                    file_name.ends_with(&pat[1..])
-                } else if pat.ends_with('*') {
-                    file_name.starts_with(&pat[..pat.len()-1])
+                } else if let Some(stripped) = pat.strip_prefix('*') {
+                    file_name.ends_with(stripped)
+                } else if let Some(stripped) = pat.strip_suffix('*') {
+                    file_name.starts_with(stripped)
                 } else {
                     file_name == pat
                 }

@@ -297,10 +297,9 @@ fn extract_document_symbols(file_path: &str) -> Result<Vec<SymbolInfo>> {
 /// Extract a name from a line if it starts with one of the prefixes
 fn extract_pattern<'a>(line: &'a str, prefixes: &[&str]) -> Option<&'a str> {
     for prefix in prefixes {
-        if line.starts_with(prefix) {
-            let rest = &line[prefix.len()..];
+        if let Some(rest) = line.strip_prefix(prefix) {
             // Extract until ( for functions, { or : for structs/enums, < for generics
-            let end = rest.find(|c: char| c == '(' || c == '{' || c == ':' || c == '<')
+            let end = rest.find(['(', '{', ':', '<'])
                 .unwrap_or(rest.len());
             let name = rest[..end].trim();
             if !name.is_empty() {

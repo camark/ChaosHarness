@@ -64,12 +64,12 @@ impl QueryEngine {
         // Initialize hooks from settings
         let hook_registry = HookRegistry::new();
         for hook_def in &settings.hooks.hooks {
-            let _ = hook_registry.register_blocking(hook_def.clone());
+            hook_registry.register_blocking(hook_def.clone());
         }
         let hook_executor = HookExecutor::new(hook_registry);
 
         // Detect if we should use OpenAI format
-        let use_openai_format = settings.base_url.as_ref().map_or(false, |url| {
+        let use_openai_format = settings.base_url.as_ref().is_some_and(|url| {
             url.contains("moonshot") || url.contains("openai")
         }) || api_key.starts_with("sk-");
 
@@ -97,7 +97,7 @@ impl QueryEngine {
         // Initialize learning system if enabled
         let (context_retriever, smart_compactor, learning_engine) = if settings.learning.enabled {
             let db_path = settings.learning.knowledge_db_path.as_ref()
-                .map(|p| std::path::PathBuf::from(p))
+                .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| {
                     cwd.join(".rust_harness").join("knowledge.db")
                 });

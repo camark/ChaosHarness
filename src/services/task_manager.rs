@@ -80,7 +80,7 @@ impl TaskManager {
 
     /// Create a bash task
     pub async fn create_bash_task(&self, description: &str, command: &str) -> String {
-        let id = format!("task-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+        let id = format!("task-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let now = Utc::now();
 
         // Spawn the background process
@@ -147,7 +147,7 @@ impl TaskManager {
 
     /// Create an agent task (simplified - just stores the prompt)
     pub async fn create_agent_task(&self, description: &str, prompt: &str, model: &str) -> String {
-        let id = format!("task-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+        let id = format!("task-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let now = Utc::now();
 
         let task = Task {

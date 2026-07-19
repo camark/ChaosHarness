@@ -16,6 +16,7 @@ pub struct PathRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct PermissionSettings {
     #[serde(default)]
     pub mode: PermissionMode,
@@ -29,17 +30,6 @@ pub struct PermissionSettings {
     pub denied_commands: Vec<String>,
 }
 
-impl Default for PermissionSettings {
-    fn default() -> Self {
-        Self {
-            mode: PermissionMode::default(),
-            allowed_tools: Vec::new(),
-            denied_tools: Vec::new(),
-            path_rules: Vec::new(),
-            denied_commands: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemorySettings {
@@ -118,6 +108,7 @@ impl Default for MemorySettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct HooksSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -125,14 +116,6 @@ pub struct HooksSettings {
     pub hooks: Vec<HookDefinition>,
 }
 
-impl Default for HooksSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            hooks: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {

@@ -3,7 +3,7 @@
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -156,7 +156,7 @@ async fn search_files(
     }
 }
 
-fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
+fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
     let path = PathBuf::from(candidate);
 
     // Expand ~ to home directory

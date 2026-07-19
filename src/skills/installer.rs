@@ -142,7 +142,7 @@ impl SkillInstaller {
         // Determine the skill name
         let skill_name = name.map(|s| s.to_string()).unwrap_or_else(|| {
             // Extract from URL
-            url.split('/').last()
+            url.split('/').next_back()
                 .unwrap_or("skill")
                 .trim_end_matches(".md")
                 .to_string()
@@ -208,7 +208,7 @@ impl SkillInstaller {
 
             // Skill name is the last component of the directory path
             skill_name = if !dir_path.is_empty() {
-                dir_path.split('/').last().unwrap_or("skill").to_string()
+                dir_path.split('/').next_back().unwrap_or("skill").to_string()
             } else {
                 repo.to_string()
             };
@@ -224,7 +224,7 @@ impl SkillInstaller {
 
             // Skill name from directory name or file name
             skill_name = if !dir_path.is_empty() {
-                dir_path.split('/').last().unwrap_or("skill").to_string()
+                dir_path.split('/').next_back().unwrap_or("skill").to_string()
             } else {
                 file_name.trim_end_matches(".md").trim_end_matches(".skill").to_string()
             };

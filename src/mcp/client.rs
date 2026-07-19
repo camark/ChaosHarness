@@ -26,6 +26,9 @@ pub enum ClientState {
     Error,
 }
 
+/// Type alias for pending requests map
+type PendingRequests = Arc<Mutex<HashMap<i64, tokio::sync::oneshot::Sender<(Option<serde_json::Value>, Option<String>)>>>>;
+
 /// MCP Client for a single server
 pub struct McpClient {
     pub config: McpServerConfig,
@@ -38,10 +41,8 @@ pub struct McpClient {
     request_id: Arc<Mutex<i64>>,
     /// Channel sender for sending requests to the reader task
     request_tx: Option<tokio::sync::mpsc::Sender<(i64, String)>>,
-    /// Channel receiver for receiving responses
-    response_rx: Option<Arc<Mutex<tokio::sync::mpsc::Receiver<(i64, Option<serde_json::Value>, Option<String>)>>>>,
     // Shared map of pending requests: request_id -> Sender for response
-    pending_requests: Arc<Mutex<HashMap<i64, tokio::sync::oneshot::Sender<(Option<serde_json::Value>, Option<String>)>>>>,
+    pending_requests: PendingRequests,
 }
 
 impl McpClient {
@@ -56,7 +57,6 @@ impl McpClient {
             process: None,
             request_id: Arc::new(Mutex::new(0)),
             request_tx: None,
-            response_rx: None,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -64,7 +64,7 @@ impl McpClient {
     /// Start the background reader task for stdio transport
     async fn start_reader_task(
         mut child: Child,
-        pending_requests: Arc<Mutex<HashMap<i64, tokio::sync::oneshot::Sender<(Option<serde_json::Value>, Option<String>)>>>>,
+        pending_requests: PendingRequests,
     ) -> Result<tokio::sync::mpsc::Sender<(i64, String)>> {
         let stdin = child.stdin.take().ok_or_else(|| anyhow!("Failed to open stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("Failed to open stdout"))?;

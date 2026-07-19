@@ -53,7 +53,7 @@ impl PermissionChecker {
 
         match settings.mode {
             PermissionMode::FullAuto => {
-                return PermissionDecision {
+                PermissionDecision {
                     allowed: true,
                     requires_confirmation: false,
                     reason: String::new(),
@@ -62,17 +62,17 @@ impl PermissionChecker {
             PermissionMode::Plan => {
                 // In plan mode, read-only tools are allowed, write tools require confirmation
                 if is_read_only {
-                    return PermissionDecision {
+                    PermissionDecision {
                         allowed: true,
                         requires_confirmation: false,
                         reason: String::new(),
-                    };
+                    }
                 } else {
-                    return PermissionDecision {
+                    PermissionDecision {
                         allowed: false,
                         requires_confirmation: true,
                         reason: "Plan mode: write operations require explicit approval".to_string(),
-                    };
+                    }
                 }
             }
             PermissionMode::Default => {
@@ -152,11 +152,11 @@ impl PermissionChecker {
                 }
 
                 // Requires confirmation
-                return PermissionDecision {
+                PermissionDecision {
                     allowed: false,
                     requires_confirmation: true,
                     reason: format!("Tool '{}' requires confirmation", tool_name),
-                };
+                }
             }
         }
     }

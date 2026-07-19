@@ -71,7 +71,7 @@ impl Tool for TaskUpdateTool {
 
         // Validate progress range if provided
         if let Some(p) = progress {
-            if p < 0 || p > 100 {
+            if !(0..=100).contains(&p) {
                 return Ok(ToolResult::error(
                     "Progress must be between 0 and 100".to_string()
                 ));

@@ -65,8 +65,7 @@ impl Tool for BashTool {
         let timeout_seconds = input["timeout_seconds"]
             .as_u64()
             .unwrap_or(120)
-            .max(1)
-            .min(600);
+            .clamp(1, 600);
 
         // Determine shell based on platform
         #[cfg(windows)]

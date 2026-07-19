@@ -4,17 +4,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PermissionMode {
+    #[default]
     Default,
     Plan,
     FullAuto,
 }
 
-impl Default for PermissionMode {
-    fn default() -> Self {
-        PermissionMode::Default
-    }
-}
 
 impl std::fmt::Display for PermissionMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

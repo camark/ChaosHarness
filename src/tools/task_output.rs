@@ -55,7 +55,7 @@ impl Tool for TaskOutputTool {
         let max_bytes = input["max_bytes"].as_i64().unwrap_or(12000) as usize;
 
         // Validate max_bytes range
-        if max_bytes < 1 || max_bytes > 100000 {
+        if !(1..=100000).contains(&max_bytes) {
             return Ok(ToolResult::error(
                 "max_bytes must be between 1 and 100000".to_string()
             ));

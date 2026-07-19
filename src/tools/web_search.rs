@@ -62,14 +62,12 @@ impl Tool for WebSearchTool {
         let num_results = input["num_results"]
             .as_u64()
             .unwrap_or(10)
-            .max(1)
-            .min(50) as usize;
+            .clamp(1, 50) as usize;
 
         let timeout_seconds = input["timeout_seconds"]
             .as_u64()
             .unwrap_or(30)
-            .max(1)
-            .min(120);
+            .clamp(1, 120);
 
         // Use DuckDuckGo HTML search (no API key required)
         let encoded_query = urlencoding::encode(query);

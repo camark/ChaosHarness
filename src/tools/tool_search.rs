@@ -63,8 +63,8 @@ impl Tool for ToolSearchTool {
         }
 
         if matching_tools.is_empty() {
-            let msg = if query.is_some() {
-                format!("No tools found matching '{}'", query.unwrap())
+            let msg = if let Some(q) = query {
+                format!("No tools found matching '{}'", q)
             } else {
                 "No tools available".to_string()
             };

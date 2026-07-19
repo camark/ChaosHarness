@@ -204,11 +204,10 @@ impl App {
             KeyCode::Esc => {
                 self.input.clear();
             }
-            KeyCode::Char(c) => {
-                if !self.busy {
+            KeyCode::Char(c)
+                if !self.busy => {
                     self.input.push(c);
                 }
-            }
             _ => {}
         }
     }

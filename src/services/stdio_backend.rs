@@ -134,7 +134,7 @@ impl StdioBackend {
                 tool_registry,
                 self.cwd.clone().into(),
             ).map_err(|e| {
-                io::Error::new(io::ErrorKind::Other, format!("Failed to create query engine: {}", e))
+                io::Error::other(format!("Failed to create query engine: {}", e))
             })?;
 
             // Initialize MCP connections
@@ -255,7 +255,7 @@ impl StdioBackend {
         event: BackendEvent,
     ) -> io::Result<()> {
         let json = serde_json::to_string(&event).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, format!("Failed to serialize event: {}", e))
+            io::Error::other(format!("Failed to serialize event: {}", e))
         })?;
         let line = format!("{}{}\n", PROTOCOL_PREFIX, json);
         writer.write_all(line.as_bytes())?;
@@ -346,15 +346,14 @@ impl StdioBackend {
         }
 
         // Initialize query engine if not already done
-        if self.query_engine.is_none() {
-            if self.init_query_engine().await.is_err() {
+        if self.query_engine.is_none()
+            && self.init_query_engine().await.is_err() {
                 let _ = self.send_event(stdout, BackendEvent::Error {
                     message: "Failed to initialize query engine".to_string(),
                 });
                 let _ = self.send_event(stdout, BackendEvent::LineComplete);
                 return Ok(());
             }
-        }
 
         // Send to AI
         if let Some(ref mut query_engine) = self.query_engine {
@@ -439,8 +438,8 @@ impl StdioBackend {
                 use crate::plugins::installer::{install_plugin_from_path, uninstall_plugin, enable_plugin, disable_plugin};
 
                 let parts: Vec<&str> = cmd.split_whitespace().collect();
-                let subcommand = parts.get(1).map(|s| *s).unwrap_or("list");
-                let arg = parts.get(2).map(|s| *s);
+                let subcommand = parts.get(1).copied().unwrap_or("list");
+                let arg = parts.get(2).copied();
 
                 let message = match subcommand {
                     "list" => {
@@ -555,7 +554,7 @@ impl StdioBackend {
                 use std::path::Path;
 
                 let parts: Vec<&str> = cmd.split_whitespace().collect();
-                let subcommand = parts.get(1).map(|s| *s).unwrap_or("list");
+                let subcommand = parts.get(1).copied().unwrap_or("list");
                 let args = if parts.len() > 2 { parts[2..].join(" ") } else { String::new() };
 
                 match subcommand {
@@ -697,7 +696,7 @@ impl StdioBackend {
                                 installer.install_from_github(&url)
                             })
                             .await
-                            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;
+                            .map_err(|e| io::Error::other(format!("Task failed: {}", e)))?;
 
                             match result {
                                 Ok(path) => {
@@ -734,7 +733,7 @@ impl StdioBackend {
                                 installer.search(&query_for_closure)
                             })
                             .await
-                            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;
+                            .map_err(|e| io::Error::other(format!("Task failed: {}", e)))?;
 
                             match search_result {
                                 Ok(skills) => {
@@ -761,7 +760,7 @@ impl StdioBackend {
                                         installer.download_skill(&skill_url, Some(&skill_name))
                                     })
                                     .await
-                                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?;
+                                    .map_err(|e| io::Error::other(format!("Task failed: {}", e)))?;
                                     match download_result {
                                         Ok(path) => {
                                             let _ = self.send_event(stdout, BackendEvent::TranscriptItem {
@@ -817,7 +816,7 @@ impl StdioBackend {
                             let query = args.clone();
                             match tokio::task::spawn_blocking(move || installer.search(&query))
                                 .await
-                                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Task failed: {}", e)))?
+                                .map_err(|e| io::Error::other(format!("Task failed: {}", e)))?
                             {
                                 Ok(skills) => {
                                     if skills.is_empty() {
@@ -1101,7 +1100,7 @@ impl StdioBackend {
                 use crate::memory::manager::MemoryManager;
 
                 let parts: Vec<&str> = cmd.split_whitespace().collect();
-                let subcommand = parts.get(1).map(|s| *s).unwrap_or("");
+                let subcommand = parts.get(1).copied().unwrap_or("");
                 let args = if parts.len() > 2 { parts[2..].join(" ") } else { String::new() };
 
                 match subcommand {

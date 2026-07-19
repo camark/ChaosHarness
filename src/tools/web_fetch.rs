@@ -55,8 +55,7 @@ impl Tool for WebFetchTool {
         let timeout_seconds = input["timeout_seconds"]
             .as_u64()
             .unwrap_or(30)
-            .max(1)
-            .min(120);
+            .clamp(1, 120);
 
         // Validate URL
         let parsed_url = match url::Url::parse(url) {

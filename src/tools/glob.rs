@@ -3,7 +3,7 @@
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Input schema for glob tool
 pub fn glob_input_schema() -> Value {
@@ -75,25 +75,24 @@ impl Tool for GlobTool {
         let search_pattern = root.join(pattern);
 
         if let Ok(entries) = glob::glob(&search_pattern.to_string_lossy()) {
-            for entry in entries.take(limit) {
-                if let Ok(path) = entry {
-                    if path.is_file() {
-                        // For non-recursive, check that the file is directly in root
-                        if !recursive {
-                            if let Some(parent) = path.parent() {
-                                if parent != root {
-                                    continue;
-                                }
+            for entry in entries.take(limit).flatten() {
+                let path = entry;
+                if path.is_file() {
+                    // For non-recursive, check that the file is directly in root
+                    if !recursive {
+                        if let Some(parent) = path.parent() {
+                            if parent != root {
+                                continue;
                             }
                         }
-
-                        let relative = path
-                            .strip_prefix(&root)
-                            .unwrap_or(&path)
-                            .to_string_lossy()
-                            .to_string();
-                        matches.push(relative);
                     }
+
+                    let relative = path
+                        .strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string();
+                    matches.push(relative);
                 }
             }
         }
@@ -120,7 +119,7 @@ impl Tool for GlobTool {
     }
 }
 
-fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
+fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
     let path = PathBuf::from(candidate);
 
     // Expand ~ to home directory

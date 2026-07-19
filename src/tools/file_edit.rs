@@ -3,7 +3,7 @@
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Input schema for file edit tool
 pub fn file_edit_input_schema() -> Value {
@@ -103,7 +103,7 @@ impl Tool for FileEditTool {
     }
 }
 
-fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
+fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
     let path = PathBuf::from(candidate);
 
     // Expand ~ to home directory

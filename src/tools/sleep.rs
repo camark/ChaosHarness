@@ -45,8 +45,7 @@ impl Tool for SleepTool {
         let seconds = input["seconds"]
             .as_f64()
             .unwrap_or(1.0)
-            .max(0.1)
-            .min(30.0);
+            .clamp(0.1, 30.0);
 
         tokio::time::sleep(tokio::time::Duration::from_secs_f64(seconds)).await;
 

@@ -109,8 +109,7 @@ pub fn list_session_snapshots(cwd: &str, limit: usize) -> Vec<SessionSnapshot> {
             let created_at = metadata.created()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| chrono::DateTime::from_timestamp(d.as_secs() as i64, 0))
-                .flatten()
+                .and_then(|d| chrono::DateTime::from_timestamp(d.as_secs() as i64, 0))
                 .unwrap_or_else(Utc::now);
 
             Some(SessionSnapshot {
@@ -123,7 +122,7 @@ pub fn list_session_snapshots(cwd: &str, limit: usize) -> Vec<SessionSnapshot> {
         .collect();
 
     // Sort by created_at descending (newest first)
-    snapshots.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    snapshots.sort_by_key(|b| std::cmp::Reverse(b.created_at));
 
     // Limit results
     if snapshots.len() > limit {

@@ -56,7 +56,7 @@ impl Tool for RemoteTriggerTool {
         let timeout_seconds = input["timeout_seconds"].as_i64().unwrap_or(120);
 
         // Validate timeout range
-        if timeout_seconds < 1 || timeout_seconds > 600 {
+        if !(1..=600).contains(&timeout_seconds) {
             return Ok(ToolResult::error(
                 "timeout_seconds must be between 1 and 600".to_string()
             ));

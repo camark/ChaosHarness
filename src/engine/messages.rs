@@ -116,7 +116,7 @@ impl ConversationMessage {
     pub fn to_api_param(&self) -> Value {
         let mut param = json!({
             "role": self.role,
-            "content": self.content.iter().map(|c| content_to_api_param(c)).collect::<Vec<_>>()
+            "content": self.content.iter().map(content_to_api_param).collect::<Vec<_>>()
         });
 
         // For assistant messages with tool uses, add them to the content array

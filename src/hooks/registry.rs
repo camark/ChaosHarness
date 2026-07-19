@@ -27,7 +27,7 @@ impl HookRegistry {
             .ok_or_else(|| format!("Unknown hook event: {}", hook.event))?;
 
         let mut hooks = self.hooks.write();
-        hooks.entry(event).or_insert_with(Vec::new).push(hook);
+        hooks.entry(event).or_default().push(hook);
         Ok(())
     }
 

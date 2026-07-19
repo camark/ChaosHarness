@@ -84,7 +84,7 @@ pub fn execute_security_scan(context: &HookContext) -> Option<String> {
     // Special handling for file write/edit tools
     if tool_name == "write_file" || tool_name == "edit_file" {
         if let Some(path) = payload.get("path").and_then(|v| v.as_str()) {
-            let file_name = path.split('/').last().or_else(|| path.split('\\').last())?;
+            let file_name = path.split('/').next_back().or_else(|| path.split('\\').next_back())?;
 
             for sensitive in SENSITIVE_FILES.iter() {
                 if file_name == *sensitive || path.contains(sensitive) {

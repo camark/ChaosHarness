@@ -61,7 +61,7 @@ pub async fn run_repl(_args: &Args, settings: Settings) -> Result<()> {
         }
 
         // Check for slash commands
-        if input.starts_with('/') {
+        if let Some(stripped) = input.strip_prefix('/') {
             let ctx = CommandContext {
                 cwd: cwd.clone(),
                 settings: &settings,
@@ -70,7 +70,7 @@ pub async fn run_repl(_args: &Args, settings: Settings) -> Result<()> {
 
             if let Some(cmd) = command_registry.lookup(input) {
                 // Extract args from input
-                let args = input[1..].split_whitespace().skip(1).collect::<Vec<_>>().join(" ");
+                let args = stripped.split_whitespace().skip(1).collect::<Vec<_>>().join(" ");
                 let result = (cmd.handler)(&args, &ctx);
 
                 if result.clear_screen {

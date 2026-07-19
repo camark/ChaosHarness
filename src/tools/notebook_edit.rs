@@ -3,7 +3,7 @@
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Input schema for notebook edit tool
 pub fn notebook_edit_input_schema() -> Value {
@@ -188,7 +188,7 @@ fn create_cell(source: &str, cell_type: &str, id: &str) -> Value {
     })
 }
 
-fn generate_cell_id(cells: &Vec<Value>) -> String {
+fn generate_cell_id(cells: &[Value]) -> String {
     let max_id = cells
         .iter()
         .filter_map(|c| c.get("id").and_then(|v| v.as_str()))
@@ -198,7 +198,7 @@ fn generate_cell_id(cells: &Vec<Value>) -> String {
     (max_id + 1).to_string()
 }
 
-fn resolve_path(base: &PathBuf, candidate: &str) -> PathBuf {
+fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
     let path = PathBuf::from(candidate);
 
     // Expand ~ to home directory
