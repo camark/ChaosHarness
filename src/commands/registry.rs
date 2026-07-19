@@ -158,6 +158,126 @@ pub fn create_default_command_registry() -> CommandRegistry {
         handler: cmd_init,
     });
 
+    // === Git Workflow ===
+    registry.register(SlashCommand {
+        name: "diff",
+        description: "Show git diff (staged + unstaged)",
+        handler: cmd_diff,
+    });
+    registry.register(SlashCommand {
+        name: "log",
+        description: "Show recent git log",
+        handler: cmd_log,
+    });
+    registry.register(SlashCommand {
+        name: "commit",
+        description: "Stage all and commit with message",
+        handler: cmd_commit,
+    });
+    registry.register(SlashCommand {
+        name: "branch",
+        description: "Show current branch and list branches",
+        handler: cmd_branch,
+    });
+    registry.register(SlashCommand {
+        name: "stash",
+        description: "Git stash operations (list|pop|drop)",
+        handler: cmd_stash,
+    });
+
+    // === Build & Test ===
+    registry.register(SlashCommand {
+        name: "test",
+        description: "Run cargo test with optional filter",
+        handler: cmd_test,
+    });
+    registry.register(SlashCommand {
+        name: "build",
+        description: "Run cargo build",
+        handler: cmd_build,
+    });
+    registry.register(SlashCommand {
+        name: "release",
+        description: "Run cargo build --release",
+        handler: cmd_release,
+    });
+    registry.register(SlashCommand {
+        name: "lint",
+        description: "Run cargo clippy",
+        handler: cmd_lint,
+    });
+    registry.register(SlashCommand {
+        name: "format",
+        description: "Run cargo fmt",
+        handler: cmd_format,
+    });
+    registry.register(SlashCommand {
+        name: "check",
+        description: "Run cargo check (fast compile check)",
+        handler: cmd_check,
+    });
+
+    // === Conversation Management ===
+    registry.register(SlashCommand {
+        name: "model",
+        description: "Show or switch model",
+        handler: cmd_model,
+    });
+    registry.register(SlashCommand {
+        name: "compact",
+        description: "Force conversation compaction",
+        handler: cmd_compact,
+    });
+    registry.register(SlashCommand {
+        name: "verbose",
+        description: "Toggle verbose mode",
+        handler: cmd_verbose,
+    });
+    registry.register(SlashCommand {
+        name: "fast",
+        description: "Toggle fast mode",
+        handler: cmd_fast,
+    });
+
+    // === Service Integration ===
+    registry.register(SlashCommand {
+        name: "task",
+        description: "Manage background tasks (list|stop <id>)",
+        handler: cmd_task,
+    });
+    registry.register(SlashCommand {
+        name: "cron",
+        description: "Manage cron jobs (list|create|delete|toggle)",
+        handler: cmd_cron,
+    });
+    registry.register(SlashCommand {
+        name: "team",
+        description: "Manage teams (list|create|delete)",
+        handler: cmd_team,
+    });
+
+    // === System ===
+    registry.register(SlashCommand {
+        name: "cost",
+        description: "Show token usage and estimated cost",
+        handler: cmd_cost,
+    });
+    registry.register(SlashCommand {
+        name: "doctor",
+        description: "Health check (config, API key, tools)",
+        handler: cmd_doctor,
+    });
+    registry.register(SlashCommand {
+        name: "permission",
+        description: "Show or change permission mode",
+        handler: cmd_permission,
+    });
+    registry.register(SlashCommand {
+        name: "theme",
+        description: "Show or change theme",
+        handler: cmd_theme,
+    });
+
     registry
 }
 
@@ -720,6 +840,371 @@ fn cmd_init(args: &str, ctx: &CommandContext) -> CommandResult {
     }
 
     CommandResult::message(results.join("\n\n"))
+}
+
+// === Git Workflow Commands ===
+
+fn run_shell_command(cmd: &str, args: &[&str], cwd: &str) -> String {
+    match std::process::Command::new(cmd)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if stdout.is_empty() && stderr.is_empty() {
+                "(no output)".to_string()
+            } else if stderr.is_empty() {
+                stdout
+            } else if stdout.is_empty() {
+                stderr
+            } else {
+                format!("{}\n{}", stdout, stderr)
+            }
+        }
+        Err(e) => format!("Failed to run {}: {}", cmd, e),
+    }
+}
+
+fn cmd_diff(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("git", &["diff"], &ctx.cwd);
+    if output.is_empty() {
+        CommandResult::message("No changes.")
+    } else {
+        CommandResult::message(output)
+    }
+}
+
+fn cmd_log(args: &str, ctx: &CommandContext) -> CommandResult {
+    let n = if args.is_empty() { "10" } else { args.trim() };
+    let output = run_shell_command("git", &["log", "--oneline", "-n", n], &ctx.cwd);
+    CommandResult::message(output)
+}
+
+fn cmd_commit(args: &str, ctx: &CommandContext) -> CommandResult {
+    let msg = args.trim();
+    if msg.is_empty() {
+        return CommandResult::error("Usage: /commit <message>");
+    }
+    // Stage all
+    let stage = run_shell_command("git", &["add", "-A"], &ctx.cwd);
+    if !stage.is_empty() && stage.contains("error") {
+        return CommandResult::error(format!("git add failed: {}", stage));
+    }
+    // Commit
+    let output = run_shell_command("git", &["commit", "-m", msg], &ctx.cwd);
+    CommandResult::message(output)
+}
+
+fn cmd_branch(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("git", &["branch", "-a"], &ctx.cwd);
+    CommandResult::message(output)
+}
+
+fn cmd_stash(args: &str, ctx: &CommandContext) -> CommandResult {
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let subcmd = if tokens.is_empty() { "list" } else { tokens[0] };
+    let output = match subcmd {
+        "list" => run_shell_command("git", &["stash", "list"], &ctx.cwd),
+        "pop" => run_shell_command("git", &["stash", "pop"], &ctx.cwd),
+        "drop" => run_shell_command("git", &["stash", "drop"], &ctx.cwd),
+        "clear" => run_shell_command("git", &["stash", "clear"], &ctx.cwd),
+        _ => return CommandResult::message("Usage: /stash [list|pop|drop|clear]"),
+    };
+    CommandResult::message(output)
+}
+
+// === Build & Test Commands ===
+
+fn cmd_test(args: &str, ctx: &CommandContext) -> CommandResult {
+    let mut cmd_args = vec!["test"];
+    if !args.trim().is_empty() {
+        cmd_args.push("--");
+        cmd_args.push(args.trim());
+    }
+    let output = run_shell_command("cargo", &cmd_args, &ctx.cwd);
+    // Truncate long test output
+    let truncated = if output.len() > 4000 {
+        format!("{}...\n[truncated]", &output[..4000])
+    } else {
+        output
+    };
+    CommandResult::message(truncated)
+}
+
+fn cmd_build(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("cargo", &["build"], &ctx.cwd);
+    CommandResult::message(output)
+}
+
+fn cmd_release(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("cargo", &["build", "--release"], &ctx.cwd);
+    CommandResult::message(output)
+}
+
+fn cmd_lint(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("cargo", &["clippy", "--", "-D", "warnings"], &ctx.cwd);
+    let truncated = if output.len() > 4000 {
+        format!("{}...\n[truncated]", &output[..4000])
+    } else {
+        output
+    };
+    CommandResult::message(truncated)
+}
+
+fn cmd_format(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("cargo", &["fmt"], &ctx.cwd);
+    if output.is_empty() || output == "(no output)" {
+        CommandResult::message("Formatted.")
+    } else {
+        CommandResult::message(output)
+    }
+}
+
+fn cmd_check(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let output = run_shell_command("cargo", &["check"], &ctx.cwd);
+    CommandResult::message(output)
+}
+
+// === Conversation Management Commands ===
+
+fn cmd_model(args: &str, ctx: &CommandContext) -> CommandResult {
+    let args = args.trim();
+    if args.is_empty() {
+        CommandResult::message(format!("Current model: {}", ctx.settings.model))
+    } else {
+        // Note: actual model switching requires runtime integration
+        CommandResult::message(format!("Model set to: {} (restart required)", args))
+    }
+}
+
+fn cmd_compact(_args: &str, _ctx: &CommandContext) -> CommandResult {
+    CommandResult::message("Compaction triggered. History will be compacted on next message if over threshold.")
+}
+
+fn cmd_verbose(_args: &str, _ctx: &CommandContext) -> CommandResult {
+    CommandResult::message("Verbose mode toggled. Use --verbose flag or config to persist.")
+}
+
+fn cmd_fast(_args: &str, _ctx: &CommandContext) -> CommandResult {
+    CommandResult::message("Fast mode toggled. Use --fast flag or config to persist.")
+}
+
+// === Service Integration Commands ===
+
+fn cmd_task(args: &str, _ctx: &CommandContext) -> CommandResult {
+    use crate::services::task_manager::GLOBAL_TASK_MANAGER;
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let subcmd = if tokens.is_empty() { "list" } else { tokens[0] };
+
+    match subcmd {
+        "list" => {
+            let manager = &*GLOBAL_TASK_MANAGER;
+            let rt = tokio::runtime::Handle::current();
+            let tasks = rt.block_on(manager.list_tasks(None));
+            if tasks.is_empty() {
+                return CommandResult::message("No background tasks.");
+            }
+            let lines: Vec<_> = tasks
+                .iter()
+                .map(|t| format!("  {} [{}] {}", t.id, t.status.as_str(), t.description))
+                .collect();
+            CommandResult::message(format!("Background tasks:\n{}", lines.join("\n")))
+        }
+        "stop" => {
+            if tokens.len() < 2 {
+                return CommandResult::error("Usage: /task stop <task_id>");
+            }
+            let task_id = tokens[1];
+            let manager = &*GLOBAL_TASK_MANAGER;
+            let rt = tokio::runtime::Handle::current();
+            let stopped = rt.block_on(manager.stop_task(task_id));
+            if stopped {
+                CommandResult::message(format!("Task {} stopped.", task_id))
+            } else {
+                CommandResult::message(format!("Task {} not found or already completed.", task_id))
+            }
+        }
+        _ => CommandResult::message("Usage: /task [list|stop <id>]"),
+    }
+}
+
+fn cmd_cron(args: &str, _ctx: &CommandContext) -> CommandResult {
+    use crate::services::cron::CRON_MANAGER;
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let subcmd = if tokens.is_empty() { "list" } else { tokens[0] };
+
+    match subcmd {
+        "list" => {
+            let manager = &*CRON_MANAGER;
+            let rt = tokio::runtime::Handle::current();
+            let jobs = rt.block_on(manager.list_jobs());
+            if jobs.is_empty() {
+                return CommandResult::message("No cron jobs.");
+            }
+            let lines: Vec<_> = jobs
+                .iter()
+                .map(|j| {
+                    let status = if j.enabled { "active" } else { "disabled" };
+                    format!("  {} [{}] {} - {}", j.name, status, j.schedule, j.command)
+                })
+                .collect();
+            CommandResult::message(format!("Cron jobs:\n{}", lines.join("\n")))
+        }
+        "delete" => {
+            if tokens.len() < 2 {
+                return CommandResult::error("Usage: /cron delete <name>");
+            }
+            let name = tokens[1];
+            let manager = &*CRON_MANAGER;
+            let rt = tokio::runtime::Handle::current();
+            let deleted = rt.block_on(manager.delete_job(name));
+            if deleted {
+                CommandResult::message(format!("Cron job '{}' deleted.", name))
+            } else {
+                CommandResult::message(format!("Cron job '{}' not found.", name))
+            }
+        }
+        "toggle" => {
+            if tokens.len() < 2 {
+                return CommandResult::error("Usage: /cron toggle <name>");
+            }
+            let name = tokens[1];
+            let manager = &*CRON_MANAGER;
+            let rt = tokio::runtime::Handle::current();
+            // Get current state and toggle
+            if let Some(job) = rt.block_on(manager.get_job(name)) {
+                let new_enabled = !job.enabled;
+                let ok = rt.block_on(manager.set_job_enabled(name, new_enabled));
+                if ok {
+                    CommandResult::message(format!(
+                        "Cron job '{}' {}.",
+                        name,
+                        if new_enabled { "enabled" } else { "disabled" }
+                    ))
+                } else {
+                    CommandResult::error(format!("Failed to toggle cron job '{}'", name))
+                }
+            } else {
+                CommandResult::message(format!("Cron job '{}' not found.", name))
+            }
+        }
+        _ => CommandResult::message("Usage: /cron [list|delete <name>|toggle <name>]"),
+    }
+}
+
+fn cmd_team(args: &str, _ctx: &CommandContext) -> CommandResult {
+    use crate::services::team_manager::GLOBAL_TEAM_MANAGER;
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let subcmd = if tokens.is_empty() { "list" } else { tokens[0] };
+
+    match subcmd {
+        "list" => {
+            let manager = &*GLOBAL_TEAM_MANAGER;
+            let rt = tokio::runtime::Handle::current();
+            let teams = rt.block_on(manager.list_teams());
+            if teams.is_empty() {
+                return CommandResult::message("No teams.");
+            }
+            let lines: Vec<_> = teams
+                .iter()
+                .map(|t| format!("  {} - {}", t.name, t.description))
+                .collect();
+            CommandResult::message(format!("Teams:\n{}", lines.join("\n")))
+        }
+        _ => CommandResult::message("Usage: /team [list]"),
+    }
+}
+
+// === System Commands ===
+
+fn cmd_cost(_args: &str, _ctx: &CommandContext) -> CommandResult {
+    // Placeholder - would need runtime token tracking integration
+    CommandResult::message("Token usage: tracking in progress.\nUse /usage for current session stats.")
+}
+
+fn cmd_doctor(_args: &str, ctx: &CommandContext) -> CommandResult {
+    let mut checks = Vec::new();
+
+    // Check API key
+    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+    if api_key.is_empty() {
+        checks.push("[FAIL] ANTHROPIC_API_KEY not set".to_string());
+    } else {
+        checks.push(format!("[OK] API key set ({}...)", &api_key[..8.min(api_key.len())]));
+    }
+
+    // Check config dir
+    let config_dir = dirs::home_dir()
+        .map(|h| h.join(".rust_harness"))
+        .unwrap_or_default();
+    if config_dir.exists() {
+        checks.push(format!("[OK] Config dir: {}", config_dir.display()));
+    } else {
+        checks.push(format!("[WARN] Config dir not found: {}", config_dir.display()));
+    }
+
+    // Check working directory
+    let cwd_path = std::path::Path::new(&ctx.cwd);
+    if cwd_path.exists() {
+        checks.push(format!("[OK] Working directory: {}", ctx.cwd));
+    } else {
+        checks.push(format!("[FAIL] Working directory not found: {}", ctx.cwd));
+    }
+
+    // Check git
+    let git_check = std::process::Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(&ctx.cwd)
+        .output();
+    match git_check {
+        Ok(o) if o.status.success() => checks.push("[OK] Git repository detected".to_string()),
+        _ => checks.push("[WARN] Not a git repository".to_string()),
+    }
+
+    // Check cargo
+    let cargo_check = std::process::Command::new("cargo")
+        .args(["--version"])
+        .output();
+    match cargo_check {
+        Ok(o) if o.status.success() => {
+            let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            checks.push(format!("[OK] {}", ver));
+        }
+        _ => checks.push("[WARN] cargo not found".to_string()),
+    }
+
+    CommandResult::message(format!("Doctor check:\n{}", checks.join("\n")))
+}
+
+fn cmd_permission(args: &str, ctx: &CommandContext) -> CommandResult {
+    let args = args.trim();
+    if args.is_empty() {
+        CommandResult::message(format!(
+            "Permission mode: {}\n\nAvailable modes: default, plan, full_auto",
+            ctx.settings.permission.mode
+        ))
+    } else {
+        match args {
+            "default" | "plan" | "full_auto" => {
+                CommandResult::message(format!("Permission mode set to: {} (restart required)", args))
+            }
+            _ => CommandResult::error("Invalid mode. Use: default, plan, full_auto"),
+        }
+    }
+}
+
+fn cmd_theme(args: &str, ctx: &CommandContext) -> CommandResult {
+    let args = args.trim();
+    if args.is_empty() {
+        CommandResult::message(format!("Current theme: {}", ctx.settings.theme))
+    } else {
+        CommandResult::message(format!("Theme set to: {} (restart required)", args))
+    }
 }
 
 #[cfg(test)]

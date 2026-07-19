@@ -137,7 +137,8 @@
       "Bash(git rebase:*)",
       "Bash(git branch:*)",
       "Bash(cargo clippy:*)",
-      "Bash(cargo fix:*)"
+      "Bash(cargo fix:*)",
+      "Bash(xargs -I{} basename {})"
     ]
   }
 }
