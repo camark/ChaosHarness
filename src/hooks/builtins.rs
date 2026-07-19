@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use lazy_static::lazy_static;
 
 lazy_static! {
-    /// Dangerous command patterns that should be blocked
+    /// Dangerous command patterns that should be blocked (literal substring match)
     static ref DANGEROUS_COMMANDS: HashSet<&'static str> = {
         let mut set = HashSet::new();
         set.insert("rm -rf /");
@@ -18,8 +18,7 @@ lazy_static! {
         set.insert("mkfs");
         set.insert("> /dev/sda");
         set.insert("chmod -R 777 /");
-        set.insert("curl .* | .*sh");
-        set.insert("wget .* | .*sh");
+        // Note: curl/wget piped to shell is checked separately with proper logic
         set
     };
 

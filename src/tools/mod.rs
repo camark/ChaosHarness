@@ -15,6 +15,7 @@ pub mod directory_tree;
 pub mod skill;
 pub mod init;
 pub mod mcp;
+pub mod path_util;
 
 // Cron tools
 pub mod cron_create;

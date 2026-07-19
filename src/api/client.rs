@@ -553,7 +553,7 @@ mod tests {
 
         // Case 1: Current (incorrect) settings - should still work due to detection
         let client1 = ApiClient::new(
-            "sk-ctv5yzCJV7l1JYPj5W7RXVx48Cy05VxqyfELFCzEVU0PsCj3".to_string(),
+            "sk-test-FAKE_KEY_FOR_TESTING_ONLY".to_string(),
             Some("https://api.moonshot.cn/anthropic".to_string())
         );
         // Will detect OpenAI format due to sk- prefix
@@ -561,7 +561,7 @@ mod tests {
 
         // Case 2: Corrected settings (recommended)
         let client2 = ApiClient::new(
-            "sk-ctv5yzCJV7l1JYPj5W7RXVx48Cy05VxqyfELFCzEVU0PsCj3".to_string(),
+            "sk-test-FAKE_KEY_FOR_TESTING_ONLY".to_string(),
             Some("https://api.moonshot.cn/v1".to_string())
         );
         // Will detect OpenAI format and build correct URL

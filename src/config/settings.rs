@@ -280,13 +280,22 @@ mod tests {
 
     #[test]
     fn test_resolve_api_key_from_env() {
+        // Save original value if exists
+        let original = env::var("ANTHROPIC_API_KEY").ok();
+
         env::set_var("ANTHROPIC_API_KEY", "env-key");
         let settings = Settings::default();
-        // Note: This test depends on env var being set
         let result = settings.resolve_api_key();
-        env::remove_var("ANTHROPIC_API_KEY");
-        // Either from settings or env
-        assert!(result.is_ok() || result.is_err());
+
+        // Should resolve to the env key we just set
+        assert!(result.is_ok(), "Expected to resolve API key from env");
+        assert_eq!(result.unwrap(), "env-key");
+
+        // Restore original state
+        match original {
+            Some(val) => env::set_var("ANTHROPIC_API_KEY", val),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
     }
 
     #[test]

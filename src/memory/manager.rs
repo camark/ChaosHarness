@@ -250,8 +250,8 @@ mod tests {
 
         // List files
         let files = MemoryManager::list_memory_files(&temp_dir);
-        // Just verify we can list files, don't check exact count due to timing
-        assert!(!files.is_empty() || files.is_empty()); // Just verify we can list files
+        // Should have at least the MEMORY.md index file and the two entries
+        assert!(files.len() >= 2, "Expected at least 2 memory files, got {}", files.len());
 
         cleanup_test_dir(&temp_dir);
     }
@@ -272,12 +272,16 @@ mod tests {
         let temp_dir = get_test_temp_dir("slug");
 
         // Test various title formats
-        let _ = MemoryManager::add_memory_entry(&temp_dir, "Hello World!", "Content");
-        let _ = MemoryManager::add_memory_entry(&temp_dir, "Test 123", "Content");
+        let r1 = MemoryManager::add_memory_entry(&temp_dir, "Hello World!", "Content");
+        let r2 = MemoryManager::add_memory_entry(&temp_dir, "Test 123", "Content");
+
+        // Verify entries were created successfully
+        assert!(r1.is_ok(), "Failed to add 'Hello World!' entry");
+        assert!(r2.is_ok(), "Failed to add 'Test 123' entry");
 
         // Verify files were created
         let files = MemoryManager::list_memory_files(&temp_dir);
-        assert!(!files.is_empty() || files.is_empty()); // Just verify we can list files
+        assert!(files.len() >= 2, "Expected at least 2 memory files, got {}", files.len());
 
         cleanup_test_dir(&temp_dir);
     }

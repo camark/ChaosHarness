@@ -1,9 +1,9 @@
 //! Glob tool - List files matching a glob pattern
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::tools::path_util::resolve_path;
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
 
 /// Input schema for glob tool
 pub fn glob_input_schema() -> Value {
@@ -119,49 +119,11 @@ impl Tool for GlobTool {
     }
 }
 
-fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
-    let path = PathBuf::from(candidate);
-
-    // Expand ~ to home directory
-    if candidate.starts_with("~/") || candidate == "~" {
-        if let Some(home_dir) = dirs::home_dir() {
-            let remainder = if candidate == "~" { "" } else { &candidate[2..] };
-
-            // Special handling for Desktop - use OS-specific desktop directory
-            if remainder == "Desktop" {
-                if let Some(desktop_dir) = dirs::desktop_dir() {
-                    return desktop_dir;
-                }
-                // Fallback if desktop_dir not available
-                return home_dir.join("Desktop");
-            }
-
-            return home_dir.join(remainder);
-        }
-    }
-
-    // Auto-detect Desktop directory if candidate is "Desktop" or ends with "/Desktop"
-    if candidate == "Desktop" || candidate.ends_with("/Desktop") {
-        if let Some(desktop_dir) = dirs::desktop_dir() {
-            return desktop_dir;
-        }
-        // Fallback to ~/Desktop if desktop_dir not available
-        if let Some(home_dir) = dirs::home_dir() {
-            return home_dir.join("Desktop");
-        }
-    }
-
-    if path.is_absolute() {
-        path
-    } else {
-        base.join(path)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::File;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[tokio::test]

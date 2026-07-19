@@ -1,7 +1,5 @@
 //! Application state
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use crate::engine::messages::ConversationMessage;
 
@@ -24,6 +22,7 @@ impl AppState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_message(&mut self, message: ConversationMessage) {
         self.messages.push(message);
     }

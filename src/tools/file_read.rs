@@ -1,9 +1,9 @@
 //! File read tool - Read UTF-8 text files with line numbers
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::tools::path_util::resolve_path;
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
 
 /// Input schema for file read tool
 pub fn file_read_input_schema() -> Value {
@@ -115,44 +115,11 @@ impl Tool for FileReadTool {
     }
 }
 
-fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
-    let path = PathBuf::from(candidate);
-
-    // Expand ~ to home directory
-    if candidate.starts_with("~/") || candidate == "~" {
-        if let Some(home_dir) = dirs::home_dir() {
-            let remainder = if candidate == "~" { "" } else { &candidate[2..] };
-
-            // Special handling for Desktop - use OS-specific desktop directory
-            if remainder == "Desktop" {
-                if let Some(desktop_dir) = dirs::desktop_dir() {
-                    return desktop_dir;
-                }
-                return home_dir.join("Desktop");
-            }
-
-            return home_dir.join(remainder);
-        }
-    }
-
-    // Use dirs::desktop_dir() for automatic OS-specific Desktop detection
-    if candidate == "Desktop" || candidate.ends_with("/Desktop") {
-        if let Some(desktop_dir) = dirs::desktop_dir() {
-            return desktop_dir;
-        }
-    }
-
-    if path.is_absolute() {
-        path
-    } else {
-        base.join(path)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
     #[tokio::test]

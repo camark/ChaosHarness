@@ -25,3 +25,8 @@ pub fn remove_memory_entry(cwd: &str, name: &str) -> Result<bool, String> {
 pub fn get_memory_entrypoint(cwd: &str) -> Option<String> {
     MemoryManager::get_memory_entrypoint_content(cwd)
 }
+
+/// Read a specific memory file by name
+pub fn read_memory(cwd: &str, name: &str) -> Option<String> {
+    MemoryManager::read_memory(cwd, name)
+}

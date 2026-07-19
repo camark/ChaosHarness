@@ -1,9 +1,9 @@
 //! NotebookEdit tool - Edit Jupyter notebook cells
 
 use crate::tools::base::{Tool, ToolExecutionContext, ToolResult};
+use crate::tools::path_util::resolve_path;
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
 
 /// Input schema for notebook edit tool
 pub fn notebook_edit_input_schema() -> Value {
@@ -198,43 +198,10 @@ fn generate_cell_id(cells: &[Value]) -> String {
     (max_id + 1).to_string()
 }
 
-fn resolve_path(base: &Path, candidate: &str) -> PathBuf {
-    let path = PathBuf::from(candidate);
-
-    // Expand ~ to home directory
-    if candidate.starts_with("~/") || candidate == "~" {
-        if let Some(home_dir) = dirs::home_dir() {
-            let remainder = if candidate == "~" { "" } else { &candidate[2..] };
-
-            // Special handling for Desktop - use OS-specific desktop directory
-            if remainder == "Desktop" {
-                if let Some(desktop_dir) = dirs::desktop_dir() {
-                    return desktop_dir;
-                }
-                return home_dir.join("Desktop");
-            }
-
-            return home_dir.join(remainder);
-        }
-    }
-
-    // Use dirs::desktop_dir() for automatic OS-specific Desktop detection
-    if candidate == "Desktop" || candidate.ends_with("/Desktop") {
-        if let Some(desktop_dir) = dirs::desktop_dir() {
-            return desktop_dir;
-        }
-    }
-
-    if path.is_absolute() {
-        path
-    } else {
-        base.join(path)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tempfile::tempdir;
     use std::io::Write;
 

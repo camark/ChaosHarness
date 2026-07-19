@@ -600,7 +600,7 @@ fn cmd_config(args: &str, ctx: &CommandContext) -> CommandResult {
 }
 
 fn cmd_memory(args: &str, ctx: &CommandContext) -> CommandResult {
-    use crate::memory::{list_memory_files, add_memory_entry, remove_memory_entry, get_memory_entrypoint};
+    use crate::memory::{list_memory_files, add_memory_entry, remove_memory_entry, get_memory_entrypoint, read_memory};
 
     let tokens: Vec<&str> = args.split_whitespace().collect();
 
@@ -639,9 +639,9 @@ fn cmd_memory(args: &str, ctx: &CommandContext) -> CommandResult {
             if rest.is_empty() {
                 return CommandResult::message("Usage: /memory show <name>");
             }
-            match get_memory_entrypoint(&ctx.cwd) {
+            match read_memory(&ctx.cwd, &rest) {
                 Some(content) => CommandResult::message(content),
-                None => CommandResult::message("No MEMORY.md found."),
+                None => CommandResult::message(format!("Memory entry '{}' not found.", rest)),
             }
         }
         "add" => {
@@ -867,6 +867,18 @@ fn run_shell_command(cmd: &str, args: &[&str], cwd: &str) -> String {
     }
 }
 
+/// Find a valid UTF-8 char boundary at or before the given byte index
+fn find_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
 fn cmd_diff(_args: &str, ctx: &CommandContext) -> CommandResult {
     let output = run_shell_command("git", &["diff"], &ctx.cwd);
     if output.is_empty() {
@@ -924,9 +936,10 @@ fn cmd_test(args: &str, ctx: &CommandContext) -> CommandResult {
         cmd_args.push(args.trim());
     }
     let output = run_shell_command("cargo", &cmd_args, &ctx.cwd);
-    // Truncate long test output
+    // Truncate long test output (safe for UTF-8)
     let truncated = if output.len() > 4000 {
-        format!("{}...\n[truncated]", &output[..4000])
+        let end = find_char_boundary(&output, 4000);
+        format!("{}...\n[truncated]", &output[..end])
     } else {
         output
     };
@@ -946,7 +959,8 @@ fn cmd_release(_args: &str, ctx: &CommandContext) -> CommandResult {
 fn cmd_lint(_args: &str, ctx: &CommandContext) -> CommandResult {
     let output = run_shell_command("cargo", &["clippy", "--", "-D", "warnings"], &ctx.cwd);
     let truncated = if output.len() > 4000 {
-        format!("{}...\n[truncated]", &output[..4000])
+        let end = find_char_boundary(&output, 4000);
+        format!("{}...\n[truncated]", &output[..end])
     } else {
         output
     };

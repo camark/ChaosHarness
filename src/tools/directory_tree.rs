@@ -1,6 +1,7 @@
 //! Directory tree tool - List directory structure as a tree
 
 use crate::tools::base::{Tool, ToolResult, ToolExecutionContext};
+use crate::tools::path_util::resolve_path;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -45,38 +46,7 @@ impl DirectoryTreeTool {
 
     fn resolve_path(&self, input_path: Option<&str>) -> PathBuf {
         match input_path {
-            Some(p) if !p.is_empty() => {
-                // Expand ~ to home directory
-                if p.starts_with("~/") || p == "~" {
-                    if let Some(home_dir) = dirs::home_dir() {
-                        let remainder = if p == "~" { "" } else { &p[2..] };
-
-                        // Special handling for Desktop - use OS-specific desktop directory
-                        if remainder == "Desktop" {
-                            if let Some(desktop_dir) = dirs::desktop_dir() {
-                                return desktop_dir;
-                            }
-                            return home_dir.join("Desktop");
-                        }
-
-                        return home_dir.join(remainder);
-                    }
-                }
-
-                // Use dirs::desktop_dir() for automatic OS-specific Desktop detection
-                if p == "Desktop" || p.ends_with("/Desktop") {
-                    if let Some(desktop_dir) = dirs::desktop_dir() {
-                        return desktop_dir;
-                    }
-                }
-
-                let path = Path::new(p);
-                if path.is_absolute() {
-                    path.to_path_buf()
-                } else {
-                    self.cwd.join(path)
-                }
-            }
+            Some(p) if !p.is_empty() => resolve_path(&self.cwd, p),
             _ => self.cwd.clone(),
         }
     }
