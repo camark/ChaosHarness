@@ -397,6 +397,7 @@ pub fn get_user_skills_dir() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_get_user_skills_dir() {
@@ -408,5 +409,117 @@ mod tests {
     fn test_installer_creation() {
         let installer = SkillInstaller::new("/tmp/test_skills");
         assert_eq!(installer.skills_dir, "/tmp/test_skills");
+    }
+
+    #[test]
+    fn test_remove_skill_md_file() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().to_str().unwrap();
+        let installer = SkillInstaller::new(skills_dir);
+
+        // Create a skill .md file
+        let skill_file = dir.path().join("my_skill.md");
+        fs::write(&skill_file, "# My Skill").unwrap();
+        assert!(skill_file.exists());
+
+        let result = installer.remove_skill("my_skill");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+        assert!(!skill_file.exists());
+    }
+
+    #[test]
+    fn test_remove_skill_directory() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().to_str().unwrap();
+        let installer = SkillInstaller::new(skills_dir);
+
+        // Create a skill directory
+        let skill_dir = dir.path().join("dir_skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Dir Skill").unwrap();
+
+        let result = installer.remove_skill("dir_skill");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+        assert!(!skill_dir.exists());
+    }
+
+    #[test]
+    fn test_remove_nonexistent_skill() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().to_str().unwrap();
+        let installer = SkillInstaller::new(skills_dir);
+
+        let result = installer.remove_skill("nonexistent");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_list_installed_skills_empty() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().to_str().unwrap();
+        let installer = SkillInstaller::new(skills_dir);
+
+        let skills = installer.list_installed_skills().unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn test_list_installed_skills() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().to_str().unwrap();
+        let installer = SkillInstaller::new(skills_dir);
+
+        // Create some skills
+        fs::write(dir.path().join("skill_a.md"), "# A").unwrap();
+        fs::write(dir.path().join("skill_b.md"), "# B").unwrap();
+
+        // Create a directory skill
+        let dir_skill = dir.path().join("dir_skill");
+        fs::create_dir_all(&dir_skill).unwrap();
+        fs::write(dir_skill.join("SKILL.md"), "# Dir").unwrap();
+
+        let mut skills = installer.list_installed_skills().unwrap();
+        skills.sort();
+
+        assert_eq!(skills.len(), 3);
+        assert!(skills.contains(&"skill_a".to_string()));
+        assert!(skills.contains(&"skill_b".to_string()));
+        assert!(skills.contains(&"dir_skill".to_string()));
+    }
+
+    #[test]
+    fn test_list_installed_skills_nonexistent_dir() {
+        let installer = SkillInstaller::new("/nonexistent/path");
+        let skills = installer.list_installed_skills().unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn test_skills_mp_skill_serialization() {
+        let skill = SkillsMpSkill {
+            id: "owner/repo:path".to_string(),
+            name: "test".to_string(),
+            description: "A test".to_string(),
+            author: "owner".to_string(),
+            github_url: "https://github.com/owner/repo".to_string(),
+            skill_url: "https://raw.githubusercontent.com/owner/repo/main/SKILL.md".to_string(),
+            downloads: Some(100),
+        };
+        let json = serde_json::to_string(&skill).unwrap();
+        assert!(json.contains("\"name\":\"test\""));
+        assert!(json.contains("\"downloads\":100"));
+    }
+
+    #[test]
+    fn test_skills_mp_search_response() {
+        let response = SkillsMpSearchResponse {
+            skills: vec![],
+            total: 0,
+        };
+        assert_eq!(response.total, 0);
+        assert!(response.skills.is_empty());
     }
 }

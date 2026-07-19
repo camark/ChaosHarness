@@ -178,3 +178,135 @@ fn load_skills_from_dir(skills_dir: &Path, registry: &mut SkillRegistry) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_load_skill_with_frontmatter() {
+        let dir = TempDir::new().unwrap();
+        let skill_path = dir.path().join("test.skill");
+        fs::write(&skill_path, "---\nname: my_skill\ndescription: A test skill\n---\n# Content\nSome content here").unwrap();
+
+        let skill = load_skill(&skill_path).unwrap();
+        assert_eq!(skill.name, "my_skill");
+        assert_eq!(skill.description, "A test skill");
+        assert!(skill.content.contains("# Content"));
+        assert_eq!(skill.source, "local");
+    }
+
+    #[test]
+    fn test_load_skill_without_frontmatter() {
+        let dir = TempDir::new().unwrap();
+        let skill_path = dir.path().join("simple.md");
+        fs::write(&skill_path, "# Simple Skill\nThis is a simple skill").unwrap();
+
+        let skill = load_skill(&skill_path).unwrap();
+        assert_eq!(skill.name, "simple");
+        assert_eq!(skill.source, "local");
+    }
+
+    #[test]
+    fn test_load_skill_nonexistent() {
+        let result = load_skill(Path::new("/nonexistent/path/skill.md"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_valid() {
+        let content = "---\nname: test\ndescription: desc\n---\nbody";
+        let result = parse_frontmatter(content, Path::new("/tmp/test.md"));
+        assert!(result.is_some());
+        let (name, desc) = result.unwrap();
+        assert_eq!(name, "test");
+        assert_eq!(desc, "desc");
+    }
+
+    #[test]
+    fn test_parse_frontmatter_no_frontmatter() {
+        let content = "# No frontmatter\nJust content";
+        let result = parse_frontmatter(content, Path::new("/tmp/test.md"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_missing_name() {
+        let content = "---\ndescription: desc\n---\nbody";
+        let path = Path::new("/tmp/fallback_name.md");
+        let result = parse_frontmatter(content, path);
+        // Should use directory name or filename as fallback
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_quoted_values() {
+        let content = "---\nname: \"quoted_name\"\ndescription: \"quoted desc\"\n---\nbody";
+        let result = parse_frontmatter(content, Path::new("/tmp/test.md"));
+        assert!(result.is_some());
+        let (name, desc) = result.unwrap();
+        assert_eq!(name, "quoted_name");
+        assert_eq!(desc, "quoted desc");
+    }
+
+    #[test]
+    fn test_load_skill_registry_empty_dirs() {
+        // Use a temp dir that has no .rust_harness/skills subdirectory
+        let dir = TempDir::new().unwrap();
+        // Ensure no .rust_harness directory exists
+        let harness_dir = dir.path().join(".rust_harness").join("skills");
+        assert!(!harness_dir.exists());
+
+        // The registry should be empty (though user home may have skills)
+        // We just verify it doesn't crash on empty project dir
+        let _registry = load_skill_registry(dir.path());
+        // Note: may find skills from user's home directory, so we don't assert count
+    }
+
+    #[test]
+    fn test_load_skills_from_dir() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        fs::write(skills_dir.join("skill1.md"), "---\nname: skill1\ndescription: first\n---\n# Skill 1").unwrap();
+        fs::write(skills_dir.join("skill2.md"), "---\nname: skill2\ndescription: second\n---\n# Skill 2").unwrap();
+
+        let mut registry = SkillRegistry::new();
+        load_skills_from_dir(&skills_dir, &mut registry);
+
+        assert_eq!(registry.count(), 2);
+        assert!(registry.has("skill1"));
+        assert!(registry.has("skill2"));
+    }
+
+    #[test]
+    fn test_load_skills_from_subdirectory() {
+        let dir = TempDir::new().unwrap();
+        let skills_dir = dir.path().join("skills");
+        let sub_dir = skills_dir.join("my_skill");
+        fs::create_dir_all(&sub_dir).unwrap();
+
+        fs::write(sub_dir.join("SKILL.md"), "---\ndescription: sub skill\n---\n# Sub Skill").unwrap();
+
+        let mut registry = SkillRegistry::new();
+        load_skills_from_dir(&skills_dir, &mut registry);
+
+        assert_eq!(registry.count(), 1);
+        assert!(registry.has("my_skill"));
+    }
+
+    #[test]
+    fn test_load_skill_fallback_description() {
+        let dir = TempDir::new().unwrap();
+        let skill_path = dir.path().join("no_desc.md");
+        fs::write(&skill_path, "# Title\nFirst non-empty line").unwrap();
+
+        let skill = load_skill(&skill_path).unwrap();
+        assert_eq!(skill.name, "no_desc");
+        // Should extract description from first non-empty, non-header line
+        assert!(!skill.description.is_empty());
+    }
+}

@@ -163,7 +163,6 @@ impl Default for ToolRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::tools::init_tools;
 
     #[tokio::test]

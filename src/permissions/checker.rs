@@ -219,7 +219,7 @@ impl PermissionChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::settings::{PermissionSettings, PathRule};
+    use crate::config::settings::PermissionSettings;
 
     fn default_settings() -> PermissionSettings {
         PermissionSettings::default()

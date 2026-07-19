@@ -263,6 +263,63 @@ mod tests {
         let req = JsonRpcRequest::new(1, "tools/list", None);
         assert_eq!(req.jsonrpc, "2.0");
         assert_eq!(req.method, "tools/list");
+        assert!(req.params.is_none());
+    }
+
+    #[test]
+    fn test_json_rpc_request_with_params() {
+        let params = serde_json::json!({"key": "value"});
+        let req = JsonRpcRequest::new(42, "tools/call", Some(params));
+        assert_eq!(req.jsonrpc, "2.0");
+        assert_eq!(req.method, "tools/call");
+        assert!(req.params.is_some());
+    }
+
+    #[test]
+    fn test_json_rpc_request_serialization() {
+        let req = JsonRpcRequest::new(1, "initialize", None);
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"jsonrpc\":\"2.0\""));
+        assert!(json.contains("\"method\":\"initialize\""));
+    }
+
+    #[test]
+    fn test_json_rpc_response_success() {
+        let response = JsonRpcResponse {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::Value::Number(1.into())),
+            result: Some(serde_json::json!({"status": "ok"})),
+            error: None,
+        };
+        assert!(response.result.is_some());
+        assert!(response.error.is_none());
+    }
+
+    #[test]
+    fn test_json_rpc_response_error() {
+        let response = JsonRpcResponse {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::Value::Number(1.into())),
+            result: None,
+            error: Some(JsonRpcError {
+                code: -32600,
+                message: "Invalid Request".to_string(),
+                data: None,
+            }),
+        };
+        assert!(response.result.is_none());
+        assert!(response.error.is_some());
+        assert_eq!(response.error.unwrap().code, -32600);
+    }
+
+    #[test]
+    fn test_json_rpc_error_with_data() {
+        let error = JsonRpcError {
+            code: -32602,
+            message: "Invalid params".to_string(),
+            data: Some(serde_json::json!({"detail": "missing field"})),
+        };
+        assert!(error.data.is_some());
     }
 
     #[test]
@@ -271,5 +328,204 @@ mod tests {
         assert_eq!(config.transport, "stdio");
         assert!(config.enabled);
         assert_eq!(config.timeout, 30);
+        assert!(config.command.is_none());
+        assert!(config.url.is_none());
+    }
+
+    #[test]
+    fn test_mcp_server_config_serialization() {
+        let config = McpServerConfig {
+            name: "test_server".to_string(),
+            command: Some("node".to_string()),
+            args: Some(vec!["server.js".to_string()]),
+            transport: "stdio".to_string(),
+            timeout: 60,
+            enabled: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"name\":\"test_server\""));
+        assert!(json.contains("\"command\":\"node\""));
+    }
+
+    #[test]
+    fn test_mcp_server_config_deserialization() {
+        let json = r#"{"name":"my_server","command":"python","args":["-m","server"],"transport":"stdio","timeout":30,"enabled":true}"#;
+        let config: McpServerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.name, "my_server");
+        assert_eq!(config.command, Some("python".to_string()));
+        assert_eq!(config.transport, "stdio");
+    }
+
+    #[test]
+    fn test_mcp_tool() {
+        let tool = McpTool {
+            name: "read_file".to_string(),
+            description: Some("Read a file".to_string()),
+            input_schema: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+        };
+        assert_eq!(tool.name, "read_file");
+        assert!(tool.description.is_some());
+    }
+
+    #[test]
+    fn test_mcp_tool_serialization() {
+        let tool = McpTool {
+            name: "test".to_string(),
+            description: None,
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(json.contains("\"name\":\"test\""));
+        assert!(json.contains("\"inputSchema\""));
+    }
+
+    #[test]
+    fn test_mcp_resource() {
+        let resource = McpResource {
+            uri: "file:///tmp/test.txt".to_string(),
+            name: "test.txt".to_string(),
+            description: Some("A test file".to_string()),
+            mime_type: Some("text/plain".to_string()),
+        };
+        assert_eq!(resource.uri, "file:///tmp/test.txt");
+        assert_eq!(resource.mime_type, Some("text/plain".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_prompt() {
+        let prompt = McpPrompt {
+            name: "code_review".to_string(),
+            description: Some("Review code".to_string()),
+            arguments: vec![
+                PromptArgument {
+                    name: "code".to_string(),
+                    description: Some("Code to review".to_string()),
+                    required: Some(true),
+                },
+            ],
+        };
+        assert_eq!(prompt.name, "code_review");
+        assert_eq!(prompt.arguments.len(), 1);
+        assert_eq!(prompt.arguments[0].name, "code");
+    }
+
+    #[test]
+    fn test_content_block_text() {
+        let block = ContentBlock::Text {
+            text: "Hello".to_string(),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("\"type\":\"text\""));
+        assert!(json.contains("\"text\":\"Hello\""));
+    }
+
+    #[test]
+    fn test_content_block_image() {
+        let block = ContentBlock::Image {
+            data: "base64data".to_string(),
+            mime_type: "image/png".to_string(),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("\"type\":\"image\""));
+    }
+
+    #[test]
+    fn test_tool_call_result() {
+        let result = ToolCallResult {
+            content: vec![ContentBlock::Text {
+                text: "Success".to_string(),
+            }],
+            is_error: None,
+        };
+        assert_eq!(result.content.len(), 1);
+        assert!(result.is_error.is_none());
+    }
+
+    #[test]
+    fn test_tool_call_result_error() {
+        let result = ToolCallResult {
+            content: vec![ContentBlock::Text {
+                text: "File not found".to_string(),
+            }],
+            is_error: Some(true),
+        };
+        assert!(result.is_error.unwrap());
+    }
+
+    #[test]
+    fn test_mcp_version() {
+        assert_eq!(MCP_VERSION, "2024-11-05");
+    }
+
+    #[test]
+    fn test_initialize_request() {
+        let req = InitializeRequest {
+            protocol_version: MCP_VERSION.to_string(),
+            capabilities: ClientCapabilities {
+                roots: Some(RootsCapability { list_changed: true }),
+                sampling: None,
+            },
+            client_info: Implementation {
+                name: "test_client".to_string(),
+                version: "1.0.0".to_string(),
+            },
+        };
+        assert_eq!(req.protocol_version, MCP_VERSION);
+        assert_eq!(req.client_info.name, "test_client");
+    }
+
+    #[test]
+    fn test_initialize_response() {
+        let resp = InitializeResponse {
+            protocol_version: MCP_VERSION.to_string(),
+            capabilities: ServerCapabilities {
+                logging: None,
+                prompts: Some(PromptsCapability { list_changed: false }),
+                resources: Some(ResourcesCapability {
+                    subscribe: true,
+                    list_changed: true,
+                }),
+                tools: Some(ToolsCapability { list_changed: true }),
+            },
+            server_info: Implementation {
+                name: "test_server".to_string(),
+                version: "2.0.0".to_string(),
+            },
+            instructions: Some("Use these tools".to_string()),
+        };
+        assert!(resp.capabilities.tools.is_some());
+        assert!(resp.instructions.is_some());
+    }
+
+    #[test]
+    fn test_resource_content() {
+        let content = ResourceContent {
+            uri: "file:///test".to_string(),
+            mime_type: "text/plain".to_string(),
+            text: Some("content".to_string()),
+            blob: None,
+        };
+        assert!(content.text.is_some());
+        assert!(content.blob.is_none());
+    }
+
+    #[test]
+    fn test_log_level_serialization() {
+        let level = LogLevel::Warning;
+        let json = serde_json::to_string(&level).unwrap();
+        assert_eq!(json, "\"warning\"");
+    }
+
+    #[test]
+    fn test_prompt_argument_optional() {
+        let arg = PromptArgument {
+            name: "optional_arg".to_string(),
+            description: None,
+            required: None,
+        };
+        let json = serde_json::to_string(&arg).unwrap();
+        // Should not contain null/optional fields
+        assert!(json.contains("\"name\":\"optional_arg\""));
     }
 }
