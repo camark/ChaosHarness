@@ -39,7 +39,7 @@ impl FeedbackRating {
     }
 
     /// Convert to numeric score (-1.0 to 1.0)
-    pub fn to_score(&self) -> f64 {
+    pub fn to_score(self) -> f64 {
         match self {
             Self::Positive => 1.0,
             Self::Negative => -1.0,

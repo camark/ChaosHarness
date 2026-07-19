@@ -181,3 +181,85 @@ pub fn task_specific_prompt(task_type: &str) -> &'static str {
         _ => "",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_system_prompt_basic() {
+        let prompt = generate_system_prompt(None, ".", None);
+        assert!(prompt.contains("RustHarness"));
+        assert!(prompt.contains("coding assistant"));
+        assert!(prompt.contains("Available Tools"));
+    }
+
+    #[test]
+    fn test_generate_system_prompt_with_append() {
+        let prompt = generate_system_prompt(Some("Custom appendix"), ".", None);
+        assert!(prompt.contains("Custom appendix"));
+    }
+
+    #[test]
+    fn test_generate_system_prompt_contains_tool_descriptions() {
+        let prompt = generate_system_prompt(None, ".", None);
+        assert!(prompt.contains("read_file"));
+        assert!(prompt.contains("write_file"));
+        assert!(prompt.contains("bash"));
+        assert!(prompt.contains("glob"));
+        assert!(prompt.contains("grep"));
+    }
+
+    #[test]
+    fn test_generate_system_prompt_contains_behavior_guidelines() {
+        let prompt = generate_system_prompt(None, ".", None);
+        assert!(prompt.contains("Behavior Guidelines"));
+        assert!(prompt.contains("Code Quality"));
+        assert!(prompt.contains("Safety"));
+    }
+
+    #[test]
+    fn test_generate_system_prompt_contains_learning_section() {
+        let prompt = generate_system_prompt(None, ".", None);
+        assert!(prompt.contains("LEARN:"));
+        assert!(prompt.contains("category="));
+    }
+
+    #[test]
+    fn test_task_specific_prompt_coding() {
+        let prompt = task_specific_prompt("coding");
+        assert!(prompt.contains("Coding Task"));
+        assert!(prompt.contains("runnable code"));
+    }
+
+    #[test]
+    fn test_task_specific_prompt_debugging() {
+        let prompt = task_specific_prompt("debugging");
+        assert!(prompt.contains("Debugging Task"));
+        assert!(prompt.contains("error messages"));
+    }
+
+    #[test]
+    fn test_task_specific_prompt_reviewing() {
+        let prompt = task_specific_prompt("reviewing");
+        assert!(prompt.contains("Code Review Task"));
+    }
+
+    #[test]
+    fn test_task_specific_prompt_explaining() {
+        let prompt = task_specific_prompt("explaining");
+        assert!(prompt.contains("Explanation Task"));
+    }
+
+    #[test]
+    fn test_task_specific_prompt_refactoring() {
+        let prompt = task_specific_prompt("refactoring");
+        assert!(prompt.contains("Refactoring Task"));
+    }
+
+    #[test]
+    fn test_task_specific_prompt_unknown() {
+        let prompt = task_specific_prompt("unknown");
+        assert!(prompt.is_empty());
+    }
+}

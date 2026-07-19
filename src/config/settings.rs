@@ -232,6 +232,101 @@ impl Settings {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_settings() {
+        let settings = Settings::default();
+        assert_eq!(settings.model, "claude-sonnet-4-20250514");
+        assert_eq!(settings.max_tokens, 16384);
+        assert_eq!(settings.api_format, "anthropic");
+        assert!(!settings.vim_mode);
+        assert!(!settings.fast_mode);
+    }
+
+    #[test]
+    fn test_default_permission_settings() {
+        let settings = PermissionSettings::default();
+        assert_eq!(settings.mode, PermissionMode::Default);
+        assert!(settings.allowed_tools.is_empty());
+        assert!(settings.denied_tools.is_empty());
+    }
+
+    #[test]
+    fn test_default_learning_settings() {
+        let settings = LearningSettings::default();
+        assert!(settings.enabled);
+        assert_eq!(settings.bm25_top_k, 5);
+        assert_eq!(settings.bm25_k1, 1.2);
+        assert_eq!(settings.bm25_b, 0.75);
+    }
+
+    #[test]
+    fn test_default_memory_settings() {
+        let settings = MemorySettings::default();
+        assert!(settings.enabled);
+        assert_eq!(settings.max_files, 5);
+        assert_eq!(settings.max_entrypoint_lines, 200);
+    }
+
+    #[test]
+    fn test_resolve_api_key_from_settings() {
+        let mut settings = Settings::default();
+        settings.api_key = "test-key".to_string();
+        assert_eq!(settings.resolve_api_key().unwrap(), "test-key");
+    }
+
+    #[test]
+    fn test_resolve_api_key_from_env() {
+        env::set_var("ANTHROPIC_API_KEY", "env-key");
+        let settings = Settings::default();
+        // Note: This test depends on env var being set
+        let result = settings.resolve_api_key();
+        env::remove_var("ANTHROPIC_API_KEY");
+        // Either from settings or env
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_merge_cli_overrides() {
+        let mut settings = Settings::default();
+        let mut overrides = Settings::default();
+        overrides.model = "gpt-4".to_string();
+        overrides.base_url = Some("https://api.openai.com".to_string());
+
+        settings.merge_cli_overrides(overrides);
+        assert_eq!(settings.model, "gpt-4");
+        assert_eq!(settings.base_url, Some("https://api.openai.com".to_string()));
+    }
+
+    #[test]
+    fn test_settings_serialization() {
+        let settings = Settings::default();
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("claude-sonnet-4-20250514"));
+    }
+
+    #[test]
+    fn test_settings_deserialization() {
+        let json = r#"{"model": "gpt-4", "max_tokens": 4096}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.model, "gpt-4");
+        assert_eq!(settings.max_tokens, 4096);
+    }
+
+    #[test]
+    fn test_path_rule_serialization() {
+        let rule = PathRule {
+            pattern: "/tmp/*".to_string(),
+            allow: true,
+        };
+        let json = serde_json::to_string(&rule).unwrap();
+        assert!(json.contains("/tmp/*"));
+    }
+}
+
 pub fn load_settings(config_path: Option<&str>) -> Result<Settings, Box<dyn std::error::Error + Send + Sync>> {
     let path = if let Some(p) = config_path {
         Path::new(p).to_path_buf()

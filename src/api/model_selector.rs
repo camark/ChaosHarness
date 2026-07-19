@@ -185,7 +185,7 @@ impl ModelSelector {
             .collect();
 
         // Sort by cost (cheapest first)
-        candidates.sort_by(|a, b| a.cost_tier.cmp(&b.cost_tier));
+        candidates.sort_by_key(|a| a.cost_tier);
 
         candidates.first()
             .map(|p| p.model_id.as_str())

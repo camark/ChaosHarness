@@ -215,3 +215,130 @@ impl PermissionChecker {
         settings.mode = mode;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::settings::{PermissionSettings, PathRule};
+
+    fn default_settings() -> PermissionSettings {
+        PermissionSettings::default()
+    }
+
+    fn full_auto_settings() -> PermissionSettings {
+        PermissionSettings {
+            mode: PermissionMode::FullAuto,
+            ..default_settings()
+        }
+    }
+
+    fn plan_settings() -> PermissionSettings {
+        PermissionSettings {
+            mode: PermissionMode::Plan,
+            ..default_settings()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_full_auto_allows_all() {
+        let checker = PermissionChecker::new(full_auto_settings());
+        let decision = checker.evaluate("bash", false, None, None).await;
+        assert!(decision.allowed);
+        assert!(!decision.requires_confirmation);
+    }
+
+    #[tokio::test]
+    async fn test_plan_mode_allows_read_only() {
+        let checker = PermissionChecker::new(plan_settings());
+        let decision = checker.evaluate("read_file", true, None, None).await;
+        assert!(decision.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_plan_mode_blocks_writes() {
+        let checker = PermissionChecker::new(plan_settings());
+        let decision = checker.evaluate("write_file", false, None, None).await;
+        assert!(!decision.allowed);
+        assert!(decision.requires_confirmation);
+    }
+
+    #[tokio::test]
+    async fn test_default_mode_safe_tools() {
+        let checker = PermissionChecker::new(default_settings());
+        let decision = checker.evaluate("read_file", true, None, None).await;
+        assert!(decision.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_default_mode_denied_tool() {
+        let mut settings = default_settings();
+        settings.denied_tools.push("bash".to_string());
+        let checker = PermissionChecker::new(settings);
+        let decision = checker.evaluate("bash", false, None, None).await;
+        assert!(!decision.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_default_mode_allowed_tool() {
+        let mut settings = default_settings();
+        settings.allowed_tools.push("custom_tool".to_string());
+        let checker = PermissionChecker::new(settings);
+        let decision = checker.evaluate("custom_tool", false, None, None).await;
+        assert!(decision.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_extract_file_path() {
+        let input = serde_json::json!({"path": "/test/file.rs"});
+        assert_eq!(
+            PermissionChecker::extract_file_path(&input),
+            Some("/test/file.rs".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_extract_file_path_none() {
+        let input = serde_json::json!({"command": "ls"});
+        assert_eq!(PermissionChecker::extract_file_path(&input), None);
+    }
+
+    #[tokio::test]
+    async fn test_is_tool_allowed_full_auto() {
+        let checker = PermissionChecker::new(full_auto_settings());
+        assert!(checker.is_tool_allowed("bash").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_command_allowed() {
+        let checker = PermissionChecker::new(default_settings());
+        assert!(checker.is_command_allowed("ls").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_command_denied() {
+        let mut settings = default_settings();
+        settings.denied_commands.push("rm -rf /".to_string());
+        let checker = PermissionChecker::new(settings);
+        assert!(!checker.is_command_allowed("rm -rf /").await);
+    }
+
+    #[tokio::test]
+    async fn test_requires_confirmation_full_auto() {
+        let checker = PermissionChecker::new(full_auto_settings());
+        assert!(!checker.requires_confirmation("bash").await);
+    }
+
+    #[tokio::test]
+    async fn test_requires_confirmation_plan() {
+        let checker = PermissionChecker::new(plan_settings());
+        assert!(checker.requires_confirmation("bash").await);
+    }
+
+    #[tokio::test]
+    async fn test_set_mode() {
+        let checker = PermissionChecker::new(default_settings());
+        checker.set_mode(PermissionMode::FullAuto).await;
+        let decision = checker.evaluate("bash", false, None, None).await;
+        assert!(decision.allowed);
+    }
+}

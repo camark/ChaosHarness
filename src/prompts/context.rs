@@ -331,3 +331,131 @@ pub fn build_skills_section(cwd: &str) -> Option<String> {
 
     Some(lines.join("\n"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::fs;
+
+    #[test]
+    fn test_detect_project_type_rust() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+        assert_eq!(detect_project_type(dir.path()), Some("Rust".to_string()));
+    }
+
+    #[test]
+    fn test_detect_project_type_javascript() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("package.json"), "{}").unwrap();
+        assert_eq!(detect_project_type(dir.path()), Some("JavaScript/Node.js".to_string()));
+    }
+
+    #[test]
+    fn test_detect_project_type_typescript() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("package.json"), "{}").unwrap();
+        fs::write(dir.path().join("tsconfig.json"), "{}").unwrap();
+        assert_eq!(detect_project_type(dir.path()), Some("TypeScript".to_string()));
+    }
+
+    #[test]
+    fn test_detect_project_type_python() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("pyproject.toml"), "[project]\nname = \"test\"").unwrap();
+        assert_eq!(detect_project_type(dir.path()), Some("Python".to_string()));
+    }
+
+    #[test]
+    fn test_detect_project_type_go() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("go.mod"), "module test").unwrap();
+        assert_eq!(detect_project_type(dir.path()), Some("Go".to_string()));
+    }
+
+    #[test]
+    fn test_detect_project_type_none() {
+        let dir = tempdir().unwrap();
+        assert_eq!(detect_project_type(dir.path()), None);
+    }
+
+    #[test]
+    fn test_extract_dependencies_cargo() {
+        let dir = tempdir().unwrap();
+        let cargo_toml = r#"[package]
+name = "test"
+
+[dependencies]
+serde = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+"#;
+        fs::write(dir.path().join("Cargo.toml"), cargo_toml).unwrap();
+        let deps = extract_dependencies(dir.path());
+        assert!(deps.is_some());
+        let deps = deps.unwrap();
+        assert!(deps.contains("serde"));
+        assert!(deps.contains("tokio"));
+    }
+
+    #[test]
+    fn test_extract_dependencies_none() {
+        let dir = tempdir().unwrap();
+        assert!(extract_dependencies(dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_build_directory_tree() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src").join("main.rs"), "fn main() {}").unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]").unwrap();
+
+        let tree = build_directory_tree(dir.path(), 2, "");
+        assert!(tree.contains("src/"));
+        assert!(tree.contains("Cargo.toml"));
+    }
+
+    #[test]
+    fn test_build_context_empty_dir() {
+        let dir = tempdir().unwrap();
+        let context = build_context(dir.path().to_str().unwrap());
+        // Should contain directory structure even for empty dir
+        assert!(context.contains("Directory Structure"));
+    }
+
+    #[test]
+    fn test_build_context_with_claude_md() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Test Project").unwrap();
+        let context = build_context(dir.path().to_str().unwrap());
+        assert!(context.contains("Test Project"));
+        assert!(context.contains("CLAUDE.md"));
+    }
+
+    #[test]
+    fn test_read_claude_md() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Test").unwrap();
+        let content = read_claude_md(&dir.path().join("CLAUDE.md"));
+        assert_eq!(content, Some("# Test".to_string()));
+    }
+
+    #[test]
+    fn test_read_claude_md_not_found() {
+        let dir = tempdir().unwrap();
+        let content = read_claude_md(&dir.path().join("CLAUDE.md"));
+        assert_eq!(content, None);
+    }
+
+    #[test]
+    fn test_build_skills_section_empty() {
+        let dir = tempdir().unwrap();
+        // May return None if no skills directory exists
+        let section = build_skills_section(dir.path().to_str().unwrap());
+        // Either None or Some with content
+        if let Some(s) = section {
+            assert!(s.contains("Available Skills") || s.is_empty());
+        }
+    }
+}
