@@ -69,20 +69,19 @@
 
 ## 5. Multi-turn Conversation Optimization
 
-**Status:** 🔄 Partially Implemented
+**Status:** ✅ Completed
 
 **Done:**
 - [x] Auto-compaction at 50k tokens / 50 messages
 - [x] Smart compactor with API-based summarization
+- [x] Extract key facts after each turn (file refs, decisions, preferences, issues)
+- [x] Maintain conversation summary (auto-truncated to 500 chars)
+- [x] Track decisions and commitments
+- [x] Detect topic changes (keyword-based, 8 topic categories)
+- [x] Inject relevant history into system prompt (summary, topic, decisions, facts)
+- [x] Auto-prune old facts (keep last 50)
 
-**TODO:**
-- [ ] Extract key facts after each turn
-- [ ] Maintain conversation summary
-- [ ] Track decisions and commitments
-- [ ] Detect topic changes
-- [ ] Inject relevant history into context
-
-**Files:** `src/engine/query.rs`, `src/learning/summarizer.rs`
+**Files:** `src/engine/query.rs`, `src/engine/conversation.rs`
 
 ---
 
@@ -123,6 +122,6 @@
 | 2 | Context Building | ✅ Done |
 | 3 | Learning System | 🔄 Partial |
 | 4 | Tool Selection | ✅ Done |
-| 5 | Multi-turn | 🔄 Partial |
+| 5 | Multi-turn | ✅ Done |
 | 6 | Error Recovery | ✅ Done |
 | 7 | Dynamic Model | ⏳ Pending |

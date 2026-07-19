@@ -52,6 +52,7 @@ pub struct QueryEngine {
     pub context_retriever: Option<ContextRetriever>,
     pub smart_compactor: Option<SmartCompactor>,
     pub learning_engine: Option<LearningEngine>,
+    conversation_state: Arc<Mutex<crate::engine::conversation::ConversationState>>,
 }
 
 impl QueryEngine {
@@ -170,6 +171,7 @@ impl QueryEngine {
             context_retriever,
             smart_compactor,
             learning_engine,
+            conversation_state: Arc::new(Mutex::new(crate::engine::conversation::ConversationState::new())),
         })
     }
 
@@ -264,6 +266,18 @@ impl QueryEngine {
                 }
             }
 
+            // Update conversation state (multi-turn optimization)
+            {
+                let messages = self.messages.lock().await;
+                let mut state = self.conversation_state.lock().await;
+                state.process_turn(&messages, turn);
+
+                // Prune old facts to prevent unbounded growth
+                if state.fact_count() > 100 {
+                    state.prune_old_facts(50);
+                }
+            }
+
             // Retrieve relevant context from knowledge base
             let mut enriched_system_prompt = self.settings.system_prompt.clone();
 
@@ -294,6 +308,22 @@ impl QueryEngine {
                             });
                         }
                     }
+                }
+            }
+
+            // Inject conversation state context (multi-turn optimization)
+            {
+                let state = self.conversation_state.lock().await;
+                let conversation_context = state.get_context();
+                if !conversation_context.is_empty() {
+                    enriched_system_prompt = Some(match enriched_system_prompt {
+                        Some(mut prompt) => {
+                            prompt.push_str("\n\n");
+                            prompt.push_str(&conversation_context);
+                            prompt
+                        }
+                        None => conversation_context,
+                    });
                 }
             }
 
@@ -612,6 +642,7 @@ impl Clone for QueryEngine {
             context_retriever: None,
             smart_compactor: None,
             learning_engine: None,
+            conversation_state: self.conversation_state.clone(),
         }
     }
 }
